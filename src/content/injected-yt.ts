@@ -3,16 +3,15 @@ import { BulkActivityItem } from '../types';
 
 /**
  * YouTube Studio / YouTube MAIN World 通信インターセプトスクリプト
- * ページの fetch を安全にフックし、クリエイター操作およびスクロール時の過去ログを受動的に検知して postMessage で中継する
+ * fetch および XMLHttpRequest の両方を安全にフックし、クリエイター操作およびスクロール時の過去ログを受動的に検知して postMessage で中継する
  */
 (() => {
-  // 多重注入防止
   if ((window as unknown as { __V_ACTIVITY_LAWN_YT_INJECTED__?: boolean }).__V_ACTIVITY_LAWN_YT_INJECTED__) {
     return;
   }
   (window as unknown as { __V_ACTIVITY_LAWN_YT_INJECTED__?: boolean }).__V_ACTIVITY_LAWN_YT_INJECTED__ = true;
 
-  const originalFetch = window.fetch;
+  console.log('[v-activity-lawn] YouTube MAIN World monitor initialized.');
 
   /**
    * 単体アクティビティを postMessage で通知
@@ -53,7 +52,8 @@ import { BulkActivityItem } from '../types';
     }
   }
 
-  // fetch のモンキーパッチ
+  // 1. fetch のモンキーパッチ
+  const originalFetch = window.fetch;
   window.fetch = async function (...args: Parameters<typeof fetch>): Promise<Response> {
     const response = await originalFetch.apply(this, args);
 
@@ -63,13 +63,10 @@ import { BulkActivityItem } from '../types';
         return response;
       }
 
-      // 非同期でリクエスト・レスポンスの内容を安全に解析（ホストの処理をブロックしない）
       const clonedResponse = response.clone();
       clonedResponse.json().then((data) => {
-        analyzeYouTubeResponse(url, args[1], data);
-      }).catch(() => {
-        // JSON でないレスポンスは無視
-      });
+        analyzeYouTubeResponse(url, args[1]?.body, data);
+      }).catch(() => {});
     } catch {
       // 例外は握りつぶす
     }
@@ -77,25 +74,68 @@ import { BulkActivityItem } from '../types';
     return response;
   };
 
+  // 2. XMLHttpRequest (XHR) のモンキーパッチ
+  const OriginalXHR = window.XMLHttpRequest;
+  class HookedXHR extends OriginalXHR {
+    private _url: string = '';
+    private _reqBody: unknown = null;
+
+    open(method: string, url: string | URL, async: boolean = true, username?: string | null, password?: string | null): void {
+      this._url = typeof url === 'string' ? url : url.toString();
+      super.open(method, url, async, username, password);
+    }
+
+    send(body?: Document | XMLHttpRequestBodyInit | null): void {
+      this._reqBody = body;
+      this.addEventListener('load', () => {
+        try {
+          if (this.status >= 200 && this.status < 300) {
+            const responseText = this.responseText;
+            if (responseText && (this.responseType === '' || this.responseType === 'text' || this.responseType === 'json')) {
+              let data: Record<string, unknown> | null = null;
+              if (typeof this.response === 'object' && this.response !== null) {
+                data = this.response as Record<string, unknown>;
+              } else {
+                try {
+                  data = JSON.parse(responseText);
+                } catch {}
+              }
+              if (data) {
+                analyzeYouTubeResponse(this._url, this._reqBody, data);
+              }
+            }
+          }
+        } catch {}
+      });
+      super.send(body);
+    }
+  }
+  window.XMLHttpRequest = HookedXHR;
+
   /**
    * YouTube API 通信の解析
    */
-  function analyzeYouTubeResponse(url: string, init?: RequestInit, responseData?: Record<string, unknown>) {
+  function analyzeYouTubeResponse(url: string, reqBodyInput?: unknown, responseData?: Record<string, unknown>) {
     try {
       if (!responseData) return;
 
-      const reqBodyStr = typeof init?.body === 'string' ? init.body : '';
       let reqBody: Record<string, unknown> = {};
-      if (reqBodyStr) {
+      if (typeof reqBodyInput === 'string') {
         try {
-          reqBody = JSON.parse(reqBodyStr);
-        } catch {
-          // JSONパース失敗時はスキップ
-        }
+          reqBody = JSON.parse(reqBodyInput);
+        } catch {}
+      } else if (typeof reqBodyInput === 'object' && reqBodyInput !== null) {
+        reqBody = reqBodyInput as Record<string, unknown>;
       }
 
-      // 1. スクロール時・コンテンツ一覧表示時の過去動画・配信パッシブ自動検知 (/browse, /video_manager)
-      if (url.includes('/youtubei/v1/browse') || url.includes('/video_manager') || url.includes('/channel_page')) {
+      // 1. スクロール時・コンテンツ一覧表示時の過去動画・配信・Shorts・投稿のパッシブ自動検知
+      if (
+        url.includes('/youtubei/v1/browse') ||
+        url.includes('/video_manager') ||
+        url.includes('/channel_page') ||
+        url.includes('/get_table') ||
+        url.includes('/creator')
+      ) {
         const pastItems = extractYouTubePassiveActivities(responseData);
         if (pastItems.length > 0) {
           emitBulkActivities(pastItems);

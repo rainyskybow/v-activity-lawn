@@ -2,20 +2,10 @@ import { InterceptEventMessage, RuntimeMessage } from '../types';
 
 /**
  * X (旧Twitter) 用 ISOLATED World コンテンツスクリプト
- * MAIN World に injected-x.js を注入し、postMessage を受信して Service Worker へ転送する
+ * MAIN World (injected-x.js) からの postMessage を受信し、chrome.runtime で Service Worker へ安全に中継する
  */
 (() => {
-  // MAIN World スクリプトの注入
-  try {
-    const script = document.createElement('script');
-    script.src = chrome.runtime.getURL('injected-x.js');
-    script.onload = () => {
-      script.remove();
-    };
-    (document.head || document.documentElement).appendChild(script);
-  } catch (err) {
-    console.error('[v-activity-lawn] Failed to inject X monitor script:', err);
-  }
+  console.log('[v-activity-lawn] X ISOLATED World listener ready.');
 
   // MAIN World からの postMessage を受信
   window.addEventListener('message', (event) => {
@@ -26,7 +16,7 @@ import { InterceptEventMessage, RuntimeMessage } from '../types';
     const msg = event.data as InterceptEventMessage;
     if (msg.platform !== 'x') return;
 
-    // パッシブ一括アクティビティ受信時
+    // パッシブ一括アクティビティ受信時（過去ログ自動吸い上げ）
     if (msg.isBulk && msg.bulkItems && msg.bulkItems.length > 0) {
       const runtimeMsg: RuntimeMessage = {
         type: 'RECORD_BULK_ACTIVITIES',

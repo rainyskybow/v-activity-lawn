@@ -3,16 +3,15 @@ import { BulkActivityItem } from '../types';
 
 /**
  * X (旧Twitter) MAIN World 通信インターセプトスクリプト
- * GraphQL API への fetch をフックし、クリエイターのアクティビティおよびスクロール時の過去ログを postMessage で通知する
+ * fetch および XMLHttpRequest の両方をフックし、クリエイターのアクティビティおよびスクロール時の過去ログを postMessage で通知する
  */
 (() => {
-  // 多重注入防止
   if ((window as unknown as { __V_ACTIVITY_LAWN_X_INJECTED__?: boolean }).__V_ACTIVITY_LAWN_X_INJECTED__) {
     return;
   }
   (window as unknown as { __V_ACTIVITY_LAWN_X_INJECTED__?: boolean }).__V_ACTIVITY_LAWN_X_INJECTED__ = true;
 
-  const originalFetch = window.fetch;
+  console.log('[v-activity-lawn] X MAIN World monitor initialized.');
 
   /**
    * 単体アクティビティを postMessage で通知
@@ -53,7 +52,8 @@ import { BulkActivityItem } from '../types';
     }
   }
 
-  // fetch のモンキーパッチ
+  // 1. fetch のモンキーパッチ
+  const originalFetch = window.fetch;
   window.fetch = async function (...args: Parameters<typeof fetch>): Promise<Response> {
     const response = await originalFetch.apply(this, args);
 
@@ -65,10 +65,8 @@ import { BulkActivityItem } from '../types';
 
       const clonedResponse = response.clone();
       clonedResponse.json().then((data) => {
-        analyzeXResponse(url, args[1], data);
-      }).catch(() => {
-        // 非JSONレスポンスはスキップ
-      });
+        analyzeXResponse(url, args[1]?.body, data);
+      }).catch(() => {});
     } catch {
       // 解析例外は握りつぶす
     }
@@ -76,10 +74,48 @@ import { BulkActivityItem } from '../types';
     return response;
   };
 
+  // 2. XMLHttpRequest (XHR) のモンキーパッチ
+  const OriginalXHR = window.XMLHttpRequest;
+  class HookedXHR extends OriginalXHR {
+    private _url: string = '';
+    private _reqBody: unknown = null;
+
+    open(method: string, url: string | URL, async: boolean = true, username?: string | null, password?: string | null): void {
+      this._url = typeof url === 'string' ? url : url.toString();
+      super.open(method, url, async, username, password);
+    }
+
+    send(body?: Document | XMLHttpRequestBodyInit | null): void {
+      this._reqBody = body;
+      this.addEventListener('load', () => {
+        try {
+          if (this.status >= 200 && this.status < 300) {
+            const responseText = this.responseText;
+            if (responseText && (this.responseType === '' || this.responseType === 'text' || this.responseType === 'json')) {
+              let data: Record<string, unknown> | null = null;
+              if (typeof this.response === 'object' && this.response !== null) {
+                data = this.response as Record<string, unknown>;
+              } else {
+                try {
+                  data = JSON.parse(responseText);
+                } catch {}
+              }
+              if (data) {
+                analyzeXResponse(this._url, this._reqBody, data);
+              }
+            }
+          }
+        } catch {}
+      });
+      super.send(body);
+    }
+  }
+  window.XMLHttpRequest = HookedXHR;
+
   /**
    * X の GraphQL 通信解析
    */
-  function analyzeXResponse(url: string, init?: RequestInit, responseData?: Record<string, unknown>) {
+  function analyzeXResponse(url: string, reqBodyInput?: unknown, responseData?: Record<string, unknown>) {
     try {
       if (!responseData) return;
 
@@ -97,14 +133,13 @@ import { BulkActivityItem } from '../types';
         }
       }
 
-      const reqBodyStr = typeof init?.body === 'string' ? init.body : '';
       let reqBody: Record<string, unknown> = {};
-      if (reqBodyStr) {
+      if (typeof reqBodyInput === 'string') {
         try {
-          reqBody = JSON.parse(reqBodyStr);
-        } catch {
-          // JSONパース失敗時はスキップ
-        }
+          reqBody = JSON.parse(reqBodyInput);
+        } catch {}
+      } else if (typeof reqBodyInput === 'object' && reqBodyInput !== null) {
+        reqBody = reqBodyInput as Record<string, unknown>;
       }
 
       const variables = (reqBody.variables as Record<string, unknown>) || {};

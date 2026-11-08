@@ -40,8 +40,31 @@
         "*://www.youtube.com/*"
       ],
       "js": [
+        "injected-yt.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://studio.youtube.com/*",
+        "*://www.youtube.com/*"
+      ],
+      "js": [
         "src/content/content-yt.js"
       ],
+      "world": "ISOLATED",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://x.com/*",
+        "*://twitter.com/*"
+      ],
+      "js": [
+        "injected-x.js"
+      ],
+      "world": "MAIN",
       "run_at": "document_start"
     },
     {
@@ -52,6 +75,7 @@
       "js": [
         "src/content/content-x.js"
       ],
+      "world": "ISOLATED",
       "run_at": "document_start"
     }
   ],
