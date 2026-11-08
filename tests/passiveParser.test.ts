@@ -62,6 +62,56 @@ describe('passiveParser', () => {
       expect(items[1].timestamp).toBe(1700100000000);
     });
 
+    it('YouTube Studioコンテンツの投稿タブ（コミュニティ投稿・アンケート）を正確に抽出すること', () => {
+      const mockPostResponse = {
+        contents: {
+          sectionListRenderer: {
+            contents: [
+              {
+                itemSectionRenderer: {
+                  contents: [
+                    {
+                      backstagePostThreadRenderer: {
+                        post: {
+                          backstagePostRenderer: {
+                            postId: 'post-100',
+                            contentText: { runs: [{ text: '明日の配信予定アンケートです！' }] },
+                            creationTimeMs: '1700200000000',
+                            pollAttachment: { choices: [{ text: '19時' }, { text: '21時' }] },
+                          },
+                        },
+                      },
+                    },
+                    {
+                      communityPostRenderer: {
+                        postId: 'post-200',
+                        contentText: { simpleText: 'チャンネル登録者1万人ありがとうございます！' },
+                        publishedTimeText: { runs: [{ text: '3日前' }] },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      };
+
+      const items = extractYouTubePassiveActivities(mockPostResponse);
+      expect(items.length).toBe(2);
+
+      expect(items[0].platform).toBe('youtube');
+      expect(items[0].targetId).toBe('post-100');
+      expect(items[0].actionType).toBe('community_post');
+      expect(items[0].title).toBe('[アンケート] 明日の配信予定アンケートです！');
+      expect(items[0].timestamp).toBe(1700200000000);
+
+      expect(items[1].platform).toBe('youtube');
+      expect(items[1].targetId).toBe('post-200');
+      expect(items[1].actionType).toBe('community_post');
+      expect(items[1].title).toBe('チャンネル登録者1万人ありがとうございます！');
+    });
+
     it('不正または空のレスポンスに対して安全に空配列を返すこと', () => {
       expect(extractYouTubePassiveActivities({})).toEqual([]);
       expect(extractYouTubePassiveActivities({ error: 'invalid' })).toEqual([]);
