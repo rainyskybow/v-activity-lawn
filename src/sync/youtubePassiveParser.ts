@@ -52,35 +52,46 @@ function extractText(obj: unknown): string {
 /**
  * YouTube Studio / YouTube のレスポンスから過去動画・配信・Shortsおよび「コンテンツタブ投稿」を安全に抽出する純粋関数
  * @param responseData APIレスポンスオブジェクト
+ * @param url リクエストURL（任意）
  */
-export function extractYouTubePassiveActivities(responseData: Record<string, unknown>): BulkActivityItem[] {
+export function extractYouTubePassiveActivities(
+  responseData: Record<string, unknown>,
+  url: string = ''
+): BulkActivityItem[] {
   const results: BulkActivityItem[] = [];
   if (!responseData || typeof responseData !== 'object') {
     return results;
   }
 
   const seenIds = new Set<string>();
+  const isPostEndpoint = url.includes('/list_creator_posts') || url.includes('/post/');
 
   // 1. YouTube Studio の Creator API レスポンスの直接抽出
-  // (1) /youtubei/v1/creator/list_creator_videos (videos: [...])
+  // 【重要】投稿タブ（posts）の判定を最優先に行う。
+  // 投稿に動画が添付されている場合でも、投稿が動画として誤認されるのを完全に防止する。
+  if (isPostEndpoint || Array.isArray(responseData.posts)) {
+    if (Array.isArray(responseData.posts)) {
+      for (const p of responseData.posts) {
+        if (p && typeof p === 'object') {
+          const item = parseCreatorPostItem(p as Record<string, unknown>);
+          if (item && item.targetId && !seenIds.has(item.targetId)) {
+            seenIds.add(item.targetId);
+            results.push(item);
+          }
+        }
+      }
+    }
+    // 投稿エンドポイントの場合は、添付動画が紛れ込んでいても動画としては抽出せず、投稿のみを返却
+    if (results.length > 0 || isPostEndpoint) {
+      return results;
+    }
+  }
+
+  // 動画一覧 (/list_creator_videos) の抽出
   if (Array.isArray(responseData.videos)) {
     for (const v of responseData.videos) {
       if (v && typeof v === 'object') {
         const item = parseCreatorVideoItem(v as Record<string, unknown>);
-        if (item && item.targetId && !seenIds.has(item.targetId)) {
-          seenIds.add(item.targetId);
-          results.push(item);
-        }
-      }
-    }
-    if (results.length > 0) return results;
-  }
-
-  // (2) /youtubei/v1/post/list_creator_posts (posts: [...])
-  if (Array.isArray(responseData.posts)) {
-    for (const p of responseData.posts) {
-      if (p && typeof p === 'object') {
-        const item = parseCreatorPostItem(p as Record<string, unknown>);
         if (item && item.targetId && !seenIds.has(item.targetId)) {
           seenIds.add(item.targetId);
           results.push(item);
@@ -103,6 +114,26 @@ export function extractYouTubePassiveActivities(responseData: Record<string, unk
 
     const obj = node as Record<string, unknown>;
 
+    // コンテンツタブの「投稿（コミュニティ投稿）」アイテムを動画より優先して検知
+    const postRenderer = (
+      obj.backstagePostRenderer ||
+      obj.postRenderer ||
+      obj.communityPostRenderer ||
+      obj.sharedPostRenderer ||
+      obj.backstagePostThreadRenderer
+    ) as Record<string, unknown> | undefined;
+
+    if (postRenderer) {
+      const actualPost = (postRenderer.post as Record<string, unknown>)?.backstagePostRenderer || postRenderer;
+      const item = parseSinglePostRenderer(actualPost as Record<string, unknown>);
+      if (item && item.targetId && !seenIds.has(item.targetId)) {
+        seenIds.add(item.targetId);
+        results.push(item);
+      }
+      // 投稿ブロックの配下にある添付動画が動画として誤カウントされないよう、子要素の動画探索はスキップ
+      return;
+    }
+
     // 動画・ショート・ライブ配信アイテムの検知
     const videoRenderer = (
       obj.videoRenderer ||
@@ -116,24 +147,6 @@ export function extractYouTubePassiveActivities(responseData: Record<string, unk
 
     if (videoRenderer) {
       const item = parseSingleVideoRenderer(videoRenderer);
-      if (item && item.targetId && !seenIds.has(item.targetId)) {
-        seenIds.add(item.targetId);
-        results.push(item);
-      }
-    }
-
-    // コンテンツタブの「投稿（コミュニティ投稿）」アイテムの検知
-    const postRenderer = (
-      obj.backstagePostRenderer ||
-      obj.postRenderer ||
-      obj.communityPostRenderer ||
-      obj.sharedPostRenderer ||
-      obj.backstagePostThreadRenderer
-    ) as Record<string, unknown> | undefined;
-
-    if (postRenderer) {
-      const actualPost = (postRenderer.post as Record<string, unknown>)?.backstagePostRenderer || postRenderer;
-      const item = parseSinglePostRenderer(actualPost as Record<string, unknown>);
       if (item && item.targetId && !seenIds.has(item.targetId)) {
         seenIds.add(item.targetId);
         results.push(item);
@@ -167,7 +180,10 @@ function parseCreatorVideoItem(v: Record<string, unknown>): BulkActivityItem | n
   const timePublishedSec = v.timePublishedSeconds || v.timeCreatedSeconds;
   let timestamp = Date.now();
   if (timePublishedSec) {
-    timestamp = Number(timePublishedSec) * 1000;
+    const parsedSec = Number(timePublishedSec);
+    if (!isNaN(parsedSec) && parsedSec > 0) {
+      timestamp = parsedSec * 1000;
+    }
   }
 
   const contentType = v.contentType as string;
@@ -210,18 +226,32 @@ function parseCreatorPostItem(p: Record<string, unknown>): BulkActivityItem | nu
   const publishTimeSec = p.publishTime || p.lastUpdateTimeSec;
   let timestamp = Date.now();
   if (publishTimeSec) {
-    timestamp = Number(publishTimeSec) * 1000;
+    const parsedSec = Number(publishTimeSec);
+    if (!isNaN(parsedSec) && parsedSec > 0) {
+      timestamp = parsedSec * 1000;
+    }
   }
 
   const attachment = p.attachment as Record<string, unknown> | undefined;
-  const isPoll = attachment?.attachmentType === 'POST_ATTACHMENT_TYPE_ENUM_POLL';
-  const title = isPoll ? `[アンケート] ${contentText.slice(0, 40)}` : contentText.slice(0, 40);
+  const attachType = attachment?.attachmentType as string | undefined;
 
+  let prefix = '';
+  if (attachType === 'POST_ATTACHMENT_TYPE_ENUM_POLL') {
+    prefix = '[アンケート] ';
+  } else if (attachType === 'POST_ATTACHMENT_TYPE_ENUM_VIDEO_LINK') {
+    prefix = '[動画共有] ';
+  } else if (attachType === 'POST_ATTACHMENT_TYPE_ENUM_IMAGE') {
+    prefix = '[画像投稿] ';
+  }
+
+  const title = `${prefix}${contentText}`.trim().slice(0, 50);
+
+  // 【最重要】動画リンクが添付されていても、必ず community_post として登録する
   return {
     platform: 'youtube',
     actionType: 'community_post',
     targetId: postId,
-    title,
+    title: title || 'コミュニティ投稿',
     timestamp,
   };
 }

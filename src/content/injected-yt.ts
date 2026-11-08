@@ -129,16 +129,13 @@ import { BulkActivityItem } from '../types';
       }
 
       // 1. スクロール時・コンテンツ一覧表示時の過去動画・配信・Shorts・投稿のパッシブ自動検知
-      if (
-        url.includes('/list_creator_videos') ||
-        url.includes('/list_creator_posts') ||
-        url.includes('/youtubei/v1/browse') ||
-        url.includes('/video_manager') ||
-        url.includes('/channel_page') ||
-        url.includes('/get_table') ||
-        url.includes('/creator')
-      ) {
-        const pastItems = extractYouTubePassiveActivities(responseData);
+      // ※ /get_creator_videos は動画添付投稿描画時の連動APIであり、誤検知の原因となるため明示的に除外
+      const isCreatorVideoList = url.includes('/list_creator_videos') || (url.includes('/creator') && !url.includes('/get_creator_videos'));
+      const isCreatorPostList = url.includes('/list_creator_posts') || url.includes('/post/');
+      const isBrowseList = url.includes('/youtubei/v1/browse') || url.includes('/video_manager') || url.includes('/get_table');
+
+      if (isCreatorVideoList || isCreatorPostList || isBrowseList) {
+        const pastItems = extractYouTubePassiveActivities(responseData, url);
         if (pastItems.length > 0) {
           emitBulkActivities(pastItems);
         }

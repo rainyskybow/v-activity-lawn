@@ -165,16 +165,42 @@ describe('passiveParser', () => {
             publishTime: '1700600000',
             attachment: { attachmentType: 'POST_ATTACHMENT_TYPE_ENUM_POLL' },
           },
+          // 動画リンクが添付された投稿（動画扱いになってはいけない）
+          {
+            postId: 'post-studio-video-link',
+            contentText: { runs: [{ text: '新曲のMVを公開しました！ぜひ見てね！' }] },
+            publishTime: '1700610000',
+            attachment: {
+              attachmentType: 'POST_ATTACHMENT_TYPE_ENUM_VIDEO_LINK',
+              videoLinkAttachment: { videoId: 'attached-video-999' },
+            },
+          },
+        ],
+        // 同一レスポンスに関連動画が含まれていても posts が優先されること
+        videos: [
+          {
+            videoId: 'attached-video-999',
+            title: '新曲MV',
+            timePublishedSeconds: '1700610000',
+          },
         ],
       };
 
-      const items = extractYouTubePassiveActivities(mockCreatorPostsResponse);
-      expect(items.length).toBe(1);
+      const items = extractYouTubePassiveActivities(mockCreatorPostsResponse, 'https://studio.youtube.com/youtubei/v1/post/list_creator_posts');
+      expect(items.length).toBe(2);
+
       expect(items[0].platform).toBe('youtube');
       expect(items[0].actionType).toBe('community_post');
       expect(items[0].targetId).toBe('post-studio-1');
       expect(items[0].title).toBe('[アンケート] 明日のコラボ配信について告知！');
       expect(items[0].timestamp).toBe(1700600000000);
+
+      // 動画添付投稿も必ず community_post として抽出されること
+      expect(items[1].platform).toBe('youtube');
+      expect(items[1].actionType).toBe('community_post');
+      expect(items[1].targetId).toBe('post-studio-video-link');
+      expect(items[1].title).toBe('[動画共有] 新曲のMVを公開しました！ぜひ見てね！');
+      expect(items[1].timestamp).toBe(1700610000000);
     });
 
     it('不正または空のレスポンスに対して安全に空配列を返すこと', () => {
