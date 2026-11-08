@@ -1,0 +1,88 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./src/**/*.{html,ts,tsx,js,jsx}",
+  ],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        theme: {
+          green: {
+            0: '#ebedf0',
+            1: '#9be9a8',
+            2: '#40c463',
+            3: '#30a14e',
+            4: '#216e39',
+            dark0: '#161b22',
+            dark1: '#0e4429',
+            dark2: '#006d32',
+            dark3: '#26a641',
+            dark4: '#39d353',
+          },
+          pink: {
+            0: '#ebedf0',
+            1: '#fbcfe8',
+            2: '#f472b6',
+            3: '#db2777',
+            4: '#9d174d',
+            dark0: '#161b22',
+            dark1: '#4a142e',
+            dark2: '#831843',
+            dark3: '#db2777',
+            dark4: '#f472b6',
+          },
+          cyan: {
+            0: '#ebedf0',
+            1: '#bae6fd',
+            2: '#38bdf8',
+            3: '#0284c7',
+            4: '#075985',
+            dark0: '#161b22',
+            dark1: '#0c354d',
+            dark2: '#0369a1',
+            dark3: '#38bdf8',
+            dark4: '#7dd3fc',
+          },
+          purple: {
+            0: '#ebedf0',
+            1: '#e9d5ff',
+            2: '#c084fc',
+            3: '#9333ea',
+            4: '#581c87',
+            dark0: '#161b22',
+            dark1: '#2e1065',
+            dark2: '#6b21a8',
+            dark3: '#a855f7',
+            dark4: '#c084fc',
+          },
+          red: {
+            0: '#ebedf0',
+            1: '#fecaca',
+            2: '#f87171',
+            3: '#dc2626',
+            4: '#991b1b',
+            dark0: '#161b22',
+            dark1: '#450a0a',
+            dark2: '#991b1b',
+            dark3: '#ef4444',
+            dark4: '#f87171',
+          },
+          yellow: {
+            0: '#ebedf0',
+            1: '#fef08a',
+            2: '#facc15',
+            3: '#ca8a04',
+            4: '#854d0e',
+            dark0: '#161b22',
+            dark1: '#422006',
+            dark2: '#854d0e',
+            dark3: '#eab308',
+            dark4: '#facc15',
+          },
+        }
+      }
+    },
+  },
+  plugins: [],
+};
