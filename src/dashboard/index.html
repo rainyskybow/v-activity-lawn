@@ -139,33 +139,57 @@
     </section>
 
     <!-- 過去データ同期・エクスポート設定セクション -->
-    <section class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
       
       <!-- YouTube RSS即時・定期自動同期カード -->
-      <div class="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm">
-        <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">YouTube 公開RSS同期（定期自動同期対応）</h3>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          チャンネルIDを入力して同期すると、IDが保存されバックグラウンドで1時間ごとに最新動画が自動同期されます（ログイン不要・完全安全）。
-        </p>
-        <div class="flex items-center space-x-2">
-          <input id="input-channel-id" type="text" placeholder="チャンネルID (例: UC...)" class="flex-1 bg-gray-50 dark:bg-gray-750 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-green-500">
-          <button id="btn-sync-rss" class="px-3 py-1.5 text-xs font-bold bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:opacity-90 transition">
-            保存・即時同期
-          </button>
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">YouTube 公開RSS同期</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            チャンネルIDを入力して保存すると、直近公開された動画（最大15件）を即座に反映し、以降1時間ごとに完全自動同期します。
+          </p>
         </div>
-        <div id="rss-sync-status" class="text-xs mt-2 text-gray-500"></div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <input id="input-channel-id" type="text" placeholder="チャンネルID (例: UC...)" class="flex-1 min-w-0 bg-gray-50 dark:bg-gray-750 border border-gray-300 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-green-500">
+            <button id="btn-sync-rss" class="px-2.5 py-1.5 text-xs font-bold bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:opacity-90 transition whitespace-nowrap">
+              保存・同期
+            </button>
+          </div>
+          <div id="rss-sync-status" class="text-xs mt-2 text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- YouTube データ取込カード（Google Takeout / Studio CSV） -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">YouTube データ取込</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            Google Takeout（ZIP）またはYouTube Studioからエクスポートした動画・投稿CSVを読み込み、過去全期間の活動を一撃で反映します。
+          </p>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <input id="input-youtube-archive" type="file" accept=".zip,.csv,.json" class="text-xs file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 cursor-pointer w-full">
+          </div>
+          <div id="yt-import-status" class="text-xs mt-2 text-gray-500"></div>
+        </div>
       </div>
 
       <!-- Xデータアーカイブインポートカード -->
-      <div class="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm">
-        <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">X データアーカイブ取込</h3>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          X公式からダウンロードしたアーカイブファイル（zipまたはtweets.js/like.js）をローカルで読み込み、過去全期間の草を生成します。外部サーバー送信は一切行いません。
-        </p>
-        <div class="flex items-center space-x-2">
-          <input id="input-x-archive" type="file" accept=".zip,.js,.json" class="text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 cursor-pointer">
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">X データアーカイブ取込</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            X公式からダウンロードしたアーカイブファイル（ZIPまたはtweets.js/like.js）をローカルで読み込み、過去全期間の草を生成します。
+          </p>
         </div>
-        <div id="x-import-status" class="text-xs mt-2 text-gray-500"></div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <input id="input-x-archive" type="file" accept=".zip,.js,.json" class="text-xs file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 cursor-pointer w-full">
+          </div>
+          <div id="x-import-status" class="text-xs mt-2 text-gray-500"></div>
+        </div>
       </div>
 
     </section>

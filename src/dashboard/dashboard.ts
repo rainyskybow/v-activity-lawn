@@ -10,6 +10,7 @@ import { renderLawnSvg, COLOR_PALETTES } from '../components/lawnGraph';
 import { renderTimeline } from '../components/timeline';
 import { exportShareCardImage } from '../components/shareCard';
 import { fetchYouTubeChannelRss } from '../sync/youtubeRss';
+import { parseUploadedYouTubeArchive } from '../sync/youtubeArchive';
 import { parseUploadedXArchive } from '../sync/xArchive';
 import { generatePast53WeeksGrid, formatDateString } from '../utils/dateUtils';
 import { ThemeColorName, ViewFilterType, DailySummary } from '../types';
@@ -213,6 +214,32 @@ function setupEventListeners() {
       } catch (err) {
         rssStatus.textContent = `エラー: ${String(err)}`;
         rssStatus.className = 'text-xs mt-2 text-red-500';
+      }
+    });
+  }
+
+  // YouTubeアーカイブ・CSVインポート
+  const inputYtArchive = document.getElementById('input-youtube-archive') as HTMLInputElement | null;
+  const ytStatus = document.getElementById('yt-import-status');
+
+  if (inputYtArchive && ytStatus) {
+    inputYtArchive.addEventListener('change', async () => {
+      const files = inputYtArchive.files;
+      if (!files || files.length === 0) return;
+
+      const file = files[0];
+      ytStatus.textContent = 'ファイル解析中...';
+      ytStatus.className = 'text-xs mt-2 text-gray-500';
+
+      try {
+        const records = await parseUploadedYouTubeArchive(file);
+        const importedCount = await bulkImportActivities(records);
+        ytStatus.textContent = `取込完了: ${importedCount} 件のアクティビティを反映しました。`;
+        ytStatus.className = 'text-xs mt-2 text-green-600 dark:text-green-400';
+        await loadData();
+      } catch (err) {
+        ytStatus.textContent = `取込エラー: ${String(err)}`;
+        ytStatus.className = 'text-xs mt-2 text-red-500';
       }
     });
   }
