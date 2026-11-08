@@ -1,0 +1,72 @@
+{
+  "manifest_version": 3,
+  "name": "v-activity-lawn",
+  "version": "1.0.0",
+  "description": "VTuber・動画クリエイターのYouTubeおよびXでの活動をGitHub風の草（コントリビューショングラフ）として可視化するChrome拡張機能",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "v-activity-lawn",
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/index.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://studio.youtube.com/*",
+    "*://*.x.com/*",
+    "*://*.twitter.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://studio.youtube.com/*",
+        "*://www.youtube.com/*"
+      ],
+      "js": [
+        "src/content/content-yt.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://x.com/*",
+        "*://twitter.com/*"
+      ],
+      "js": [
+        "src/content/content-x.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "injected-yt.js",
+        "injected-x.js"
+      ],
+      "matches": [
+        "*://studio.youtube.com/*",
+        "*://www.youtube.com/*",
+        "*://x.com/*",
+        "*://twitter.com/*"
+      ]
+    }
+  ]
+}
