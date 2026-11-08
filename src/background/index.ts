@@ -95,20 +95,28 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
   if (message.type === 'RECORD_BULK_ACTIVITIES') {
     (async () => {
       try {
+        if (!message.items || !Array.isArray(message.items) || message.items.length === 0) {
+          sendResponse({ success: true, count: 0 });
+          return;
+        }
+
         const settings = await getSettings();
         const records: ActivityRecord[] = message.items.map((item) => {
+          const rawTs = Number(item.timestamp);
+          const safeTs = !isNaN(rawTs) && rawTs > 0 ? rawTs : Date.now();
           const score = calculateBaseScore(item.actionType, item.durationMinutes, settings.customWeights);
-          const dateString = formatDateString(item.timestamp);
-          const targetId = item.targetId || `bulk-${item.timestamp}-${Math.random().toString(36).substring(2, 7)}`;
+          const dateString = formatDateString(safeTs);
+          const targetId = item.targetId || `bulk-${safeTs}-${Math.random().toString(36).substring(2, 7)}`;
+
           return {
             id: `${item.platform}-${targetId}`,
             platform: item.platform,
             actionType: item.actionType,
             targetId,
-            title: item.title,
+            title: item.title || '',
             durationMinutes: item.durationMinutes,
-            score,
-            timestamp: item.timestamp,
+            score: isNaN(score) ? 0 : score,
+            timestamp: safeTs,
             dateString,
           };
         });
@@ -117,8 +125,9 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         await updateBadge();
         sendResponse({ success: true, count });
       } catch (err) {
-        console.error('[v-activity-lawn] Failed to record bulk activities:', err);
-        sendResponse({ success: false, error: String(err) });
+        const errorDetail = err instanceof Error ? (err.stack || err.message) : (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        console.error('[v-activity-lawn] Failed to record bulk activities:', errorDetail);
+        sendResponse({ success: false, error: errorDetail });
       }
     })();
     return true;

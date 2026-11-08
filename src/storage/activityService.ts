@@ -141,47 +141,55 @@ export async function getStreakRecord(): Promise<StreakRecord> {
 }
 
 /**
- * 複数のアクティビティを一括登録する（RSS同期やXアーカイブ取込時用）
+ * 複数のアクティビティを一括登録する（RSS同期、Xアーカイブ取込、スクロール時パッシブ自動吸い上げ用）
  */
 export async function bulkImportActivities(records: ActivityRecord[]): Promise<number> {
   if (records.length === 0) return 0;
 
-  // 既存のIDや重複を避けて一括挿入
   const affectedDates = new Set<string>();
-  const toInsert: ActivityRecord[] = [];
+  const toUpsert: ActivityRecord[] = [];
+  const seenBatchIds = new Set<string>();
 
   for (const rec of records) {
-    // 既存重複のチェック
-    let duplicate = false;
-    if (rec.targetId) {
-      const found = await db.activities
-        .where('targetId')
-        .equals(rec.targetId)
-        .and((a) => a.actionType === rec.actionType)
-        .first();
-      if (found) {
-        duplicate = true;
-      }
-    }
+    // タイムスタンプと日付の安全検証
+    const safeTimestamp = (typeof rec.timestamp === 'number' && !isNaN(rec.timestamp) && rec.timestamp > 0)
+      ? rec.timestamp
+      : Date.now();
+    const safeDateString = rec.dateString && rec.dateString !== 'NaN-NaN-NaN'
+      ? rec.dateString
+      : formatDateString(safeTimestamp);
 
-    if (!duplicate) {
-      toInsert.push(rec);
-      affectedDates.add(rec.dateString);
+    const safeRecord: ActivityRecord = {
+      ...rec,
+      timestamp: safeTimestamp,
+      dateString: safeDateString,
+      score: isNaN(rec.score) ? 0 : rec.score,
+    };
+
+    // 同一バッチ内のID重複を排除
+    if (seenBatchIds.has(safeRecord.id)) {
+      continue;
     }
+    seenBatchIds.add(safeRecord.id);
+
+    toUpsert.push(safeRecord);
+    affectedDates.add(safeDateString);
   }
 
-  if (toInsert.length > 0) {
-    await db.activities.bulkAdd(toInsert);
+  if (toUpsert.length > 0) {
+    // bulkAdd ではなく bulkPut を用いてキー重複エラー（BulkError）を防止
+    await db.activities.bulkPut(toUpsert);
 
     // 影響を受けた日付の日次集計を再計算
-    for (const d of affectedDates) {
+    const dateArray = Array.from(affectedDates);
+    for (const d of dateArray) {
       await refreshDailySummary(d);
     }
 
     await refreshStreaks();
   }
 
-  return toInsert.length;
+  return toUpsert.length;
 }
 
 /**

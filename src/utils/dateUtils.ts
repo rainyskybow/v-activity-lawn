@@ -1,8 +1,23 @@
 /**
- * 指定したDateオブジェクトまたはタイムスタンプから "YYYY-MM-DD" 形式の日付文字列を生成する
+ * タイムスタンプが妥当なエポックミリ秒であるか検証する
+ */
+export function isValidTimestamp(ts: unknown): ts is number {
+  return typeof ts === 'number' && !isNaN(ts) && isFinite(ts) && ts > 0;
+}
+
+/**
+ * 指定したDateオブジェクトまたはタイムスタンプから "YYYY-MM-DD" 形式の日付文字列を安全に生成する
  */
 export function formatDateString(dateInput: Date | number = new Date()): string {
-  const d = typeof dateInput === 'number' ? new Date(dateInput) : dateInput;
+  let d: Date;
+  if (typeof dateInput === 'number') {
+    d = isValidTimestamp(dateInput) ? new Date(dateInput) : new Date();
+  } else if (dateInput instanceof Date && !isNaN(dateInput.getTime())) {
+    d = dateInput;
+  } else {
+    d = new Date();
+  }
+
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -40,13 +55,11 @@ export function generatePast53WeeksGrid(
   const endDate = new Date(`${endDateStr}T00:00:00`);
   const currentDayOfWeek = endDate.getDay(); // 0: 日曜, 1: 月曜... 6: 土曜
 
-  // 今週の週末（土曜、または日曜）までのオフセットを調整してカレンダーの最終日とする
   const targetEndDay = weekStartDay === 0 ? 6 : 0;
   let offsetToEndOfWeek = (targetEndDay - currentDayOfWeek + 7) % 7;
   const gridEndDate = new Date(endDate);
   gridEndDate.setDate(gridEndDate.getDate() + offsetToEndOfWeek);
 
-  // 53週 × 7日 = 371日
   const totalDays = 53 * 7;
   const result: string[] = [];
   const iterDate = new Date(gridEndDate);

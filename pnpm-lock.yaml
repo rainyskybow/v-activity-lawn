@@ -27,6 +27,9 @@ importers:
       autoprefixer:
         specifier: ^10.4.19
         version: 10.6.2(postcss@8.5.32)
+      fake-indexeddb:
+        specifier: ^6.2.7
+        version: 6.2.7
       postcss:
         specifier: ^8.4.38
         version: 8.5.32
@@ -539,6 +542,10 @@ packages:
   execa@8.0.1:
     resolution: {integrity: sha512-VyhnebXciFV2DESc+p6B+y0LjSm0krU4OgJN44qFAhBY0TJ+1V61tYD2+wHusZ6F9n5K+vl8k0sTy7PEfV4qpg==}
     engines: {node: '>=16.17'}
+
+  fake-indexeddb@6.2.7:
+    resolution: {integrity: sha512-g0ghQ+BmU3CSZaHup5FigEAAtCmtNyxkrmID7OAeK2qONHghw1aQ2l2T1RxmfhP1H1tEXVRWArUTGVCk5832ww==}
+    engines: {node: '>=18'}
 
   fast-glob@3.3.3:
     resolution: {integrity: sha512-7MptL8U0cqcFdzIzwOTHoilX9x5BrNqye7Z/LuC7kCMRio1EMSyqRK3BEAUD7sXRq4iT4AzTVuZdhgQ2TCvYLg==}
@@ -1416,6 +1423,8 @@ snapshots:
       onetime: 6.0.0
       signal-exit: 4.1.0
       strip-final-newline: 3.0.0
+
+  fake-indexeddb@6.2.7: {}
 
   fast-glob@3.3.3:
     dependencies:
