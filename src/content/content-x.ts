@@ -26,18 +26,28 @@ import { InterceptEventMessage, RuntimeMessage } from '../types';
     const msg = event.data as InterceptEventMessage;
     if (msg.platform !== 'x') return;
 
-    const runtimeMsg: RuntimeMessage = {
-      type: 'RECORD_ACTIVITY',
-      platform: 'x',
-      actionType: msg.actionType,
-      targetId: msg.payload?.targetId,
-      title: msg.payload?.title,
-      durationMinutes: msg.payload?.durationMinutes,
-      timestamp: msg.payload?.timestamp || Date.now(),
-    };
+    // パッシブ一括アクティビティ受信時
+    if (msg.isBulk && msg.bulkItems && msg.bulkItems.length > 0) {
+      const runtimeMsg: RuntimeMessage = {
+        type: 'RECORD_BULK_ACTIVITIES',
+        items: msg.bulkItems,
+      };
+      chrome.runtime.sendMessage(runtimeMsg).catch(() => {});
+      return;
+    }
 
-    chrome.runtime.sendMessage(runtimeMsg).catch(() => {
-      // Service Worker 停止時等の例外処理
-    });
+    // 単体アクティビティ受信時
+    if (msg.actionType) {
+      const runtimeMsg: RuntimeMessage = {
+        type: 'RECORD_ACTIVITY',
+        platform: 'x',
+        actionType: msg.actionType,
+        targetId: msg.payload?.targetId,
+        title: msg.payload?.title,
+        durationMinutes: msg.payload?.durationMinutes,
+        timestamp: msg.payload?.timestamp || Date.now(),
+      };
+      chrome.runtime.sendMessage(runtimeMsg).catch(() => {});
+    }
   });
 })();

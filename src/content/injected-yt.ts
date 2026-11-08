@@ -1,6 +1,9 @@
+import { extractYouTubePassiveActivities } from '../sync/youtubePassiveParser';
+import { BulkActivityItem } from '../types';
+
 /**
  * YouTube Studio / YouTube MAIN World 通信インターセプトスクリプト
- * ページの fetch を安全にフックし、クリエイター操作のみを受動的に検知して postMessage で中継する
+ * ページの fetch を安全にフックし、クリエイター操作およびスクロール時の過去ログを受動的に検知して postMessage で中継する
  */
 (() => {
   // 多重注入防止
@@ -12,7 +15,7 @@
   const originalFetch = window.fetch;
 
   /**
-   * postMessage で ISOLATED World へイベントを通知する
+   * 単体アクティビティを postMessage で通知
    */
   function emitActivity(actionType: string, payload: Record<string, unknown>) {
     try {
@@ -27,6 +30,26 @@
       );
     } catch {
       // ログ等の失敗はホストに影響を与えないよう握りつぶす
+    }
+  }
+
+  /**
+   * スクロール時等のパッシブ一括アクティビティを postMessage で通知
+   */
+  function emitBulkActivities(items: BulkActivityItem[]) {
+    if (items.length === 0) return;
+    try {
+      window.postMessage(
+        {
+          source: 'v-activity-lawn-injected',
+          platform: 'youtube',
+          isBulk: true,
+          bulkItems: items,
+        },
+        '*'
+      );
+    } catch {
+      // 例外は握りつぶす
     }
   }
 
@@ -59,6 +82,8 @@
    */
   function analyzeYouTubeResponse(url: string, init?: RequestInit, responseData?: Record<string, unknown>) {
     try {
+      if (!responseData) return;
+
       const reqBodyStr = typeof init?.body === 'string' ? init.body : '';
       let reqBody: Record<string, unknown> = {};
       if (reqBodyStr) {
@@ -69,7 +94,15 @@
         }
       }
 
-      // 1. 動画・Shorts公開 / メタデータ更新
+      // 1. スクロール時・コンテンツ一覧表示時の過去動画・配信パッシブ自動検知 (/browse, /video_manager)
+      if (url.includes('/youtubei/v1/browse') || url.includes('/video_manager') || url.includes('/channel_page')) {
+        const pastItems = extractYouTubePassiveActivities(responseData);
+        if (pastItems.length > 0) {
+          emitBulkActivities(pastItems);
+        }
+      }
+
+      // 2. 動画・Shorts公開 / メタデータ更新
       if (url.includes('/youtubei/v1/entity_update/update_video_metadata') || url.includes('/video_metadata/update')) {
         const privacy = reqBody.privacy || reqBody.privacyStatus;
         const videoId = (reqBody.videoId as string) || (reqBody.encryptedVideoId as string);
@@ -80,28 +113,27 @@
           (title && /#shorts/i.test(title))
         );
 
-        if (privacy === 'PUBLIC' || (responseData && responseData.privacyStatus === 'PUBLIC')) {
+        if (privacy === 'PUBLIC' || responseData.privacyStatus === 'PUBLIC') {
           if (isShorts) {
             emitActivity('shorts_publish', { targetId: videoId, title: title || 'ショート動画' });
           } else {
             emitActivity('video_publish', { targetId: videoId, title: title || '通常動画' });
           }
         } else {
-          // 公開ステータス更新以外でメタデータが更新された場合
           emitActivity('metadata_update', { targetId: videoId, title });
         }
         return;
       }
 
-      // 2. ライブ配信枠の作成 (create_broadcast)
+      // 3. ライブ配信枠の作成 (create_broadcast)
       if (url.includes('/youtubei/v1/live_video/create_broadcast')) {
-        const videoId = (responseData?.videoId as string) || (reqBody.videoId as string);
+        const videoId = (responseData.videoId as string) || (reqBody.videoId as string);
         const title = (reqBody.title as string) || '配信枠';
         emitActivity('stream_schedule', { targetId: videoId, title });
         return;
       }
 
-      // 3. ライブ配信開始・終了 (transition_broadcast)
+      // 4. ライブ配信開始・終了 (transition_broadcast)
       if (url.includes('/youtubei/v1/live_video/transition_broadcast')) {
         const broadcastStatus = (reqBody.broadcastStatus as string) || (reqBody.status as string);
         const videoId = (reqBody.videoId as string) || (reqBody.broadcastId as string);
@@ -114,11 +146,11 @@
         return;
       }
 
-      // 4. コミュニティ投稿 / アンケート作成
+      // 5. コミュニティ投稿 / アンケート作成
       if (url.includes('/youtubei/v1/backstage/create_post')) {
         const postText = (reqBody.postText as string) || 'コミュニティ投稿';
         const hasPoll = Boolean(reqBody.pollAttachment || reqBody.poll);
-        const postId = (responseData?.postId as string) || `post-${Date.now()}`;
+        const postId = (responseData.postId as string) || `post-${Date.now()}`;
         emitActivity('community_post', {
           targetId: postId,
           title: hasPoll ? `[アンケート] ${postText.slice(0, 30)}` : postText.slice(0, 30),
@@ -126,7 +158,7 @@
         return;
       }
 
-      // 5. コメント返信
+      // 6. コメント返信
       if (url.includes('/youtubei/v1/comment/create_comment_reply')) {
         const replyText = (reqBody.commentText as string) || '';
         const targetId = (reqBody.parentCommentId as string) || `reply-${Date.now()}`;
@@ -134,7 +166,7 @@
         return;
       }
 
-      // 6. クリエイターハート付与
+      // 7. クリエイターハート付与
       if (url.includes('/youtubei/v1/comment/perform_comment_action')) {
         const actions = (reqBody.actions as string[]) || [];
         if (actions.includes('ACTION_HEART')) {
@@ -144,7 +176,7 @@
         return;
       }
 
-      // 7. サムネイル保存
+      // 8. サムネイル保存
       if (url.includes('/youtubei/v1/video_metadata/save_custom_thumbnail')) {
         const videoId = (reqBody.videoId as string) || `thumb-${Date.now()}`;
         emitActivity('metadata_update', { targetId: videoId, title: 'カスタムサムネイル更新' });

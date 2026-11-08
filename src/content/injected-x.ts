@@ -1,6 +1,9 @@
+import { extractXPassiveActivities } from '../sync/xPassiveParser';
+import { BulkActivityItem } from '../types';
+
 /**
  * X (旧Twitter) MAIN World 通信インターセプトスクリプト
- * GraphQL API への fetch をフックし、クリエイターのアクティビティを postMessage で通知する
+ * GraphQL API への fetch をフックし、クリエイターのアクティビティおよびスクロール時の過去ログを postMessage で通知する
  */
 (() => {
   // 多重注入防止
@@ -12,7 +15,7 @@
   const originalFetch = window.fetch;
 
   /**
-   * postMessage で ISOLATED World へイベントを通知する
+   * 単体アクティビティを postMessage で通知
    */
   function emitActivity(actionType: string, payload: Record<string, unknown>) {
     try {
@@ -27,6 +30,26 @@
       );
     } catch {
       // ホストサイトに影響を与えないよう握りつぶす
+    }
+  }
+
+  /**
+   * スクロール時等のパッシブ一括アクティビティを postMessage で通知
+   */
+  function emitBulkActivities(items: BulkActivityItem[]) {
+    if (items.length === 0) return;
+    try {
+      window.postMessage(
+        {
+          source: 'v-activity-lawn-injected',
+          platform: 'x',
+          isBulk: true,
+          bulkItems: items,
+        },
+        '*'
+      );
+    } catch {
+      // 例外は握りつぶす
     }
   }
 
@@ -58,6 +81,22 @@
    */
   function analyzeXResponse(url: string, init?: RequestInit, responseData?: Record<string, unknown>) {
     try {
+      if (!responseData) return;
+
+      // 1. プロフィール画面・タイムライン閲覧・スクロール時の過去ログパッシブ自動検知 (UserTweets, UserTweetsAndReplies, Likes)
+      if (
+        url.includes('/UserTweets') ||
+        url.includes('/UserTweetsAndReplies') ||
+        url.includes('/Likes') ||
+        url.includes('/HomeTimeline') ||
+        url.includes('/HomeLatestTimeline')
+      ) {
+        const pastItems = extractXPassiveActivities(url, responseData);
+        if (pastItems.length > 0) {
+          emitBulkActivities(pastItems);
+        }
+      }
+
       const reqBodyStr = typeof init?.body === 'string' ? init.body : '';
       let reqBody: Record<string, unknown> = {};
       if (reqBodyStr) {
@@ -70,7 +109,7 @@
 
       const variables = (reqBody.variables as Record<string, unknown>) || {};
 
-      // 1. ツイート作成・リプライ (/CreateTweet)
+      // 2. ツイート作成・リプライ (/CreateTweet)
       if (url.includes('/CreateTweet')) {
         const tweetText = (variables.tweet_text as string) || '';
         const replyInfo = variables.reply as { in_reply_to_tweet_id?: string } | undefined;
@@ -91,7 +130,7 @@
         return;
       }
 
-      // 2. リポスト (/CreateRetweet)
+      // 3. リポスト (/CreateRetweet)
       if (url.includes('/CreateRetweet')) {
         const sourceTweetId = (variables.tweet_id as string) || `retweet-${Date.now()}`;
         emitActivity('tweet_retweet', {
@@ -101,7 +140,7 @@
         return;
       }
 
-      // 3. いいね (/FavoriteTweet)
+      // 4. いいね (/FavoriteTweet)
       if (url.includes('/FavoriteTweet')) {
         const tweetId = (variables.tweet_id as string) || `like-${Date.now()}`;
         emitActivity('tweet_like', {

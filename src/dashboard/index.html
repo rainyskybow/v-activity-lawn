@@ -122,19 +122,35 @@
     <!-- ドリルダウンタイムライン領域（マス目クリック時に展開） -->
     <section id="timeline-section" class="mb-8 hidden"></section>
 
+    <!-- 過去ログ安全自動収集（垢BANリスクゼロ）のご案内 -->
+    <section class="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl p-5 mb-8">
+      <div class="flex items-start space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+          INFO
+        </div>
+        <div class="text-xs space-y-1">
+          <h3 class="font-bold text-blue-900 dark:text-blue-200 text-sm">垢BANリスクゼロの過去ログ自動吸い上げ機能（パッシブ自動検知）</h3>
+          <p class="text-blue-800 dark:text-blue-300">
+            本拡張機能は、アカウント凍結（垢BAN）やレートリミットを防止するため、外部への機械的な自動巡回を行いません。
+            代わりに、<strong>YouTube Studioの「コンテンツ」一覧</strong>や、<strong>Xの「ご自身のプロフィール画面」</strong>を開いてスクロールするだけで、画面に読み込まれた過去の動画・配信・ポスト・返信・いいねが<strong>自動的かつ安全にIndexedDBへ蓄積</strong>されます。
+          </p>
+        </div>
+      </div>
+    </section>
+
     <!-- 過去データ同期・エクスポート設定セクション -->
     <section class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
       
-      <!-- YouTube RSS即時同期カード -->
+      <!-- YouTube RSS即時・定期自動同期カード -->
       <div class="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm">
-        <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">YouTube 公開RSS同期</h3>
+        <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">YouTube 公開RSS同期（定期自動同期対応）</h3>
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          YouTubeチャンネルIDを入力して、直近公開された動画・配信（最大15件）を一瞬で同期して過去草を復元します。
+          チャンネルIDを入力して同期すると、IDが保存されバックグラウンドで1時間ごとに最新動画が自動同期されます（ログイン不要・完全安全）。
         </p>
         <div class="flex items-center space-x-2">
           <input id="input-channel-id" type="text" placeholder="チャンネルID (例: UC...)" class="flex-1 bg-gray-50 dark:bg-gray-750 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-green-500">
           <button id="btn-sync-rss" class="px-3 py-1.5 text-xs font-bold bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:opacity-90 transition">
-            同期実行
+            保存・即時同期
           </button>
         </div>
         <div id="rss-sync-status" class="text-xs mt-2 text-gray-500"></div>

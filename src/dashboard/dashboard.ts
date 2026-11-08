@@ -37,6 +37,11 @@ async function loadData() {
     selectTheme.value = currentTheme;
   }
 
+  const inputChannelId = document.getElementById('input-channel-id') as HTMLInputElement | null;
+  if (inputChannelId && settings.youtubeChannelId) {
+    inputChannelId.value = settings.youtubeChannelId;
+  }
+
   // 過去53週間の日付一覧
   const allDates = generatePast53WeeksGrid(formatDateString(), currentWeekStartDay);
   annualSummariesMap = await getDailySummariesMap(allDates);
@@ -201,7 +206,8 @@ function setupEventListeners() {
       try {
         const records = await fetchYouTubeChannelRss(channelId);
         const importedCount = await bulkImportActivities(records);
-        rssStatus.textContent = `同期完了: ${importedCount} 件のアクティビティを取り込みました。`;
+        await updateSettings({ youtubeChannelId: channelId });
+        rssStatus.textContent = `同期完了: ${importedCount} 件を取り込みました。チャンネルIDを保存し、1時間ごとの自動同期を有効化しました。`;
         rssStatus.className = 'text-xs mt-2 text-green-600 dark:text-green-400';
         await loadData();
       } catch (err) {

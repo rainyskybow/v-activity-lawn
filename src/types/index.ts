@@ -88,6 +88,19 @@ export interface UserSettings {
   customWeights?: Partial<Record<ActionType, number>>; // スコア重みのカスタム配点
   privacyMaskingDefault: boolean;  // 画像エクスポート時のマスキング標準有効化
   darkMode: boolean;               // ダークモードフラグ
+  youtubeChannelId?: string;       // 自動RSS同期用の対象YouTubeチャンネルID
+}
+
+/**
+ * 一括登録用のアクティビティ情報
+ */
+export interface BulkActivityItem {
+  platform: PlatformType;
+  actionType: ActionType;
+  targetId?: string;
+  title?: string;
+  durationMinutes?: number;
+  timestamp: number;
 }
 
 /**
@@ -106,25 +119,32 @@ export type ViewFilterType =
 export interface InterceptEventMessage {
   source: 'v-activity-lawn-injected';
   platform: PlatformType;
-  actionType: ActionType;
-  payload: {
+  actionType?: ActionType;
+  payload?: {
     targetId?: string;
     title?: string;
     durationMinutes?: number;
     timestamp?: number;
     rawMeta?: Record<string, unknown>;
   };
+  isBulk?: boolean;
+  bulkItems?: BulkActivityItem[];
 }
 
 /**
  * コンテンツスクリプトからService Workerへのchrome.runtimeメッセージ型
  */
-export interface RuntimeMessage {
-  type: 'RECORD_ACTIVITY';
-  platform: PlatformType;
-  actionType: ActionType;
-  targetId?: string;
-  title?: string;
-  durationMinutes?: number;
-  timestamp?: number;
-}
+export type RuntimeMessage =
+  | {
+      type: 'RECORD_ACTIVITY';
+      platform: PlatformType;
+      actionType: ActionType;
+      targetId?: string;
+      title?: string;
+      durationMinutes?: number;
+      timestamp?: number;
+    }
+  | {
+      type: 'RECORD_BULK_ACTIVITIES';
+      items: BulkActivityItem[];
+    };

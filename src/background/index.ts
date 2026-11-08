@@ -1,9 +1,13 @@
-import { addActivity, getTodaySummary, refreshStreaks } from '../storage/activityService';
-import { RuntimeMessage } from '../types';
+import { addActivity, bulkImportActivities, getTodaySummary, refreshStreaks } from '../storage/activityService';
+import { getSettings } from '../storage/settingsService';
+import { fetchYouTubeChannelRss } from '../sync/youtubeRss';
+import { RuntimeMessage, ActivityRecord } from '../types';
+import { formatDateString } from '../utils/dateUtils';
+import { calculateBaseScore } from '../score/scoringEngine';
 
 /**
  * バックグラウンド Service Worker
- * メッセージ受信によるアクティビティ保存、バッジ更新、日次アラームを管理
+ * メッセージ受信によるアクティビティ保存、バッジ更新、YouTube RSS定期自動同期を管理
  */
 
 /**
@@ -24,19 +28,40 @@ async function updateBadge() {
   }
 }
 
+/**
+ * YouTube公開RSSフィードのバックグラウンド自動同期処理
+ */
+async function syncYouTubeRssInBackground() {
+  try {
+    const settings = await getSettings();
+    if (!settings.youtubeChannelId) return;
+
+    console.log('[v-activity-lawn] Background RSS sync started for channel:', settings.youtubeChannelId);
+    const records = await fetchYouTubeChannelRss(settings.youtubeChannelId);
+    if (records.length > 0) {
+      const count = await bulkImportActivities(records);
+      console.log(`[v-activity-lawn] Background RSS sync completed: ${count} activities updated.`);
+    }
+  } catch (err) {
+    console.warn('[v-activity-lawn] Background RSS sync failed:', err);
+  }
+}
+
 // 拡張機能インストール・更新時の初期化
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[v-activity-lawn] Extension installed/updated.');
-  // 60分ごとの定期日次メンテナンスアラームを設定
+  // 60分ごとの定期日次メンテナンスおよびRSS自動取得アラームを設定
   chrome.alarms.create('DAILY_MAINTENANCE_ALARM', {
     periodInMinutes: 60,
   });
   updateBadge();
+  syncYouTubeRssInBackground();
 });
 
 // 定期アラームの受信
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'DAILY_MAINTENANCE_ALARM') {
+    await syncYouTubeRssInBackground();
     await refreshStreaks();
     await updateBadge();
   }
@@ -63,8 +88,39 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         sendResponse({ success: false, error: String(err) });
       }
     })();
+    return true;
+  }
 
-    // 非同期応答のため true を返却
+  // スクロール時などのパッシブ一括アクティビティ記録
+  if (message.type === 'RECORD_BULK_ACTIVITIES') {
+    (async () => {
+      try {
+        const settings = await getSettings();
+        const records: ActivityRecord[] = message.items.map((item) => {
+          const score = calculateBaseScore(item.actionType, item.durationMinutes, settings.customWeights);
+          const dateString = formatDateString(item.timestamp);
+          const targetId = item.targetId || `bulk-${item.timestamp}-${Math.random().toString(36).substring(2, 7)}`;
+          return {
+            id: `${item.platform}-${targetId}`,
+            platform: item.platform,
+            actionType: item.actionType,
+            targetId,
+            title: item.title,
+            durationMinutes: item.durationMinutes,
+            score,
+            timestamp: item.timestamp,
+            dateString,
+          };
+        });
+
+        const count = await bulkImportActivities(records);
+        await updateBadge();
+        sendResponse({ success: true, count });
+      } catch (err) {
+        console.error('[v-activity-lawn] Failed to record bulk activities:', err);
+        sendResponse({ success: false, error: String(err) });
+      }
+    })();
     return true;
   }
 });
