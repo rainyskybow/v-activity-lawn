@@ -119,8 +119,10 @@ import { BulkActivityItem } from '../types';
     try {
       if (!responseData) return;
 
-      // 1. プロフィール画面・タイムライン閲覧・スクロール時の過去ログパッシブ自動検知 (UserTweets, UserTweetsAndReplies, Likes)
+      // 1. プロフィール画面・タイムライン閲覧・スクロール時の過去ログパッシブ自動検知
       if (
+        url.includes('/UserOriginalsTimeline') ||
+        url.includes('/UserRepliesTimeline') ||
         url.includes('/UserTweets') ||
         url.includes('/UserTweetsAndReplies') ||
         url.includes('/Likes') ||

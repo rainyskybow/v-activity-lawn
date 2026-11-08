@@ -130,6 +130,8 @@ import { BulkActivityItem } from '../types';
 
       // 1. スクロール時・コンテンツ一覧表示時の過去動画・配信・Shorts・投稿のパッシブ自動検知
       if (
+        url.includes('/list_creator_videos') ||
+        url.includes('/list_creator_posts') ||
         url.includes('/youtubei/v1/browse') ||
         url.includes('/video_manager') ||
         url.includes('/channel_page') ||

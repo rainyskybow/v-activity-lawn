@@ -25,7 +25,6 @@ export function parseRelativeTimeString(text: string): number {
   const yearMatch = trimmed.match(/(\d+)\s*年前/);
   if (yearMatch) return now - Number(yearMatch[1]) * 365 * 24 * 60 * 60 * 1000;
 
-  // 日付文字列 (例: "2026/11/08", "2026-11-08") のパース試行
   const parsed = Date.parse(trimmed);
   if (!isNaN(parsed)) return parsed;
 
@@ -62,7 +61,36 @@ export function extractYouTubePassiveActivities(responseData: Record<string, unk
 
   const seenIds = new Set<string>();
 
-  // 汎用深さ制限探索 (最大深度18)
+  // 1. YouTube Studio の Creator API レスポンスの直接抽出
+  // (1) /youtubei/v1/creator/list_creator_videos (videos: [...])
+  if (Array.isArray(responseData.videos)) {
+    for (const v of responseData.videos) {
+      if (v && typeof v === 'object') {
+        const item = parseCreatorVideoItem(v as Record<string, unknown>);
+        if (item && item.targetId && !seenIds.has(item.targetId)) {
+          seenIds.add(item.targetId);
+          results.push(item);
+        }
+      }
+    }
+    if (results.length > 0) return results;
+  }
+
+  // (2) /youtubei/v1/post/list_creator_posts (posts: [...])
+  if (Array.isArray(responseData.posts)) {
+    for (const p of responseData.posts) {
+      if (p && typeof p === 'object') {
+        const item = parseCreatorPostItem(p as Record<string, unknown>);
+        if (item && item.targetId && !seenIds.has(item.targetId)) {
+          seenIds.add(item.targetId);
+          results.push(item);
+        }
+      }
+    }
+    if (results.length > 0) return results;
+  }
+
+  // 2. 一般向け YouTube や Studio 内旧UIの深層再帰探索
   function searchItems(node: unknown, depth: number) {
     if (!node || typeof node !== 'object' || depth > 18) return;
 
@@ -75,7 +103,7 @@ export function extractYouTubePassiveActivities(responseData: Record<string, unk
 
     const obj = node as Record<string, unknown>;
 
-    // 1. 動画・ショート・ライブ配信アイテムの検知
+    // 動画・ショート・ライブ配信アイテムの検知
     const videoRenderer = (
       obj.videoRenderer ||
       obj.gridVideoRenderer ||
@@ -94,7 +122,7 @@ export function extractYouTubePassiveActivities(responseData: Record<string, unk
       }
     }
 
-    // 2. コンテンツタブの「投稿（コミュニティ投稿）」アイテムの検知
+    // コンテンツタブの「投稿（コミュニティ投稿）」アイテムの検知
     const postRenderer = (
       obj.backstagePostRenderer ||
       obj.postRenderer ||
@@ -112,7 +140,6 @@ export function extractYouTubePassiveActivities(responseData: Record<string, unk
       }
     }
 
-    // すべての子オブジェクト・配列を走査
     for (const val of Object.values(obj)) {
       if (val && typeof val === 'object') {
         searchItems(val, depth + 1);
@@ -130,7 +157,77 @@ export function extractYouTubePassiveActivities(responseData: Record<string, unk
 }
 
 /**
- * 動画系レンダラーのパース
+ * YouTube Studio Creator API の動画オブジェクトパース (/list_creator_videos)
+ */
+function parseCreatorVideoItem(v: Record<string, unknown>): BulkActivityItem | null {
+  const videoId = v.videoId as string;
+  if (!videoId) return null;
+
+  const title = (v.title as string) || '動画';
+  const timePublishedSec = v.timePublishedSeconds || v.timeCreatedSeconds;
+  let timestamp = Date.now();
+  if (timePublishedSec) {
+    timestamp = Number(timePublishedSec) * 1000;
+  }
+
+  const contentType = v.contentType as string;
+  const origin = v.origin as string;
+  const isShorts = contentType === 'CREATOR_CONTENT_TYPE_SHORTS' || /#shorts/i.test(title);
+  const isStream = origin === 'VIDEO_ORIGIN_LIVESTREAM' || Boolean(v.livestream);
+
+  let actionType: 'video_publish' | 'shorts_publish' | 'stream_end' = 'video_publish';
+  if (isStream) {
+    actionType = 'stream_end';
+  } else if (isShorts) {
+    actionType = 'shorts_publish';
+  }
+
+  let durationMinutes: number | undefined;
+  if (v.lengthSeconds) {
+    durationMinutes = Math.floor(Number(v.lengthSeconds) / 60);
+  } else if (v.videoDurationMs) {
+    durationMinutes = Math.floor(Number(v.videoDurationMs) / (60 * 1000));
+  }
+
+  return {
+    platform: 'youtube',
+    actionType,
+    targetId: videoId,
+    title: title.slice(0, 50),
+    durationMinutes,
+    timestamp,
+  };
+}
+
+/**
+ * YouTube Studio Creator API の投稿オブジェクトパース (/list_creator_posts)
+ */
+function parseCreatorPostItem(p: Record<string, unknown>): BulkActivityItem | null {
+  const postId = p.postId as string;
+  if (!postId) return null;
+
+  const contentText = extractText(p.contentText) || 'コミュニティ投稿';
+  const publishTimeSec = p.publishTime || p.lastUpdateTimeSec;
+  let timestamp = Date.now();
+  if (publishTimeSec) {
+    timestamp = Number(publishTimeSec) * 1000;
+  }
+
+  const attachment = p.attachment as Record<string, unknown> | undefined;
+  const isPoll = attachment?.attachmentType === 'POST_ATTACHMENT_TYPE_ENUM_POLL';
+  const title = isPoll ? `[アンケート] ${contentText.slice(0, 40)}` : contentText.slice(0, 40);
+
+  return {
+    platform: 'youtube',
+    actionType: 'community_post',
+    targetId: postId,
+    title,
+    timestamp,
+  };
+}
+
+/**
+ * 一般YouTube用動画系レンダラーのパース
  */
 function parseSingleVideoRenderer(r: Record<string, unknown>): BulkActivityItem | null {
   const videoId = (r.videoId as string) || (r.encryptedVideoId as string);
@@ -138,7 +235,6 @@ function parseSingleVideoRenderer(r: Record<string, unknown>): BulkActivityItem 
 
   const title = extractText(r.title) || extractText(r.headline) || '動画';
 
-  // 日時の抽出 (releaseTimeMs, creationTimeMs, publishedTimeText)
   let timestamp = Date.now();
   if (r.releaseTimeMs) {
     timestamp = Number(r.releaseTimeMs);
@@ -151,7 +247,6 @@ function parseSingleVideoRenderer(r: Record<string, unknown>): BulkActivityItem 
     }
   }
 
-  // Shorts / 配信 / 通常動画の判定
   const isShorts = Boolean(/#shorts/i.test(title) || (r.lengthSeconds && Number(r.lengthSeconds) <= 60));
   const isStream = Boolean(r.upcomingEventData || (r.badges && JSON.stringify(r.badges).includes('LIVE')));
 
@@ -175,7 +270,7 @@ function parseSingleVideoRenderer(r: Record<string, unknown>): BulkActivityItem 
 }
 
 /**
- * コンテンツタブ「投稿（コミュニティ投稿）」レンダラーのパース
+ * 一般YouTube用投稿レンダラーのパース
  */
 function parseSinglePostRenderer(r: Record<string, unknown>): BulkActivityItem | null {
   const postId = (r.postId as string) || (r.id as string);

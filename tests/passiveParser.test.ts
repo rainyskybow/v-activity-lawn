@@ -112,6 +112,71 @@ describe('passiveParser', () => {
       expect(items[1].title).toBe('チャンネル登録者1万人ありがとうございます！');
     });
 
+    it('YouTube Studio Creator API (list_creator_videos) の実データ形式を正確に抽出すること', () => {
+      const mockCreatorVideosResponse = {
+        videos: [
+          {
+            videoId: 'video-studio-1',
+            title: '【初配信】自己紹介と今後の予定',
+            timePublishedSeconds: '1700500000',
+            lengthSeconds: '3600',
+            contentType: 'CREATOR_CONTENT_TYPE_VIDEO',
+            origin: 'VIDEO_ORIGIN_UPLOAD',
+          },
+          {
+            videoId: 'shorts-studio-2',
+            title: 'おすすめ挨拶 #Shorts',
+            timePublishedSeconds: '1700510000',
+            lengthSeconds: '50',
+            contentType: 'CREATOR_CONTENT_TYPE_SHORTS',
+          },
+          {
+            videoId: 'stream-studio-3',
+            title: '深夜の雑談配信枠',
+            timePublishedSeconds: '1700520000',
+            lengthSeconds: '7200',
+            origin: 'VIDEO_ORIGIN_LIVESTREAM',
+          },
+        ],
+      };
+
+      const items = extractYouTubePassiveActivities(mockCreatorVideosResponse);
+      expect(items.length).toBe(3);
+
+      expect(items[0].targetId).toBe('video-studio-1');
+      expect(items[0].actionType).toBe('video_publish');
+      expect(items[0].durationMinutes).toBe(60);
+      expect(items[0].timestamp).toBe(1700500000000);
+
+      expect(items[1].targetId).toBe('shorts-studio-2');
+      expect(items[1].actionType).toBe('shorts_publish');
+
+      expect(items[2].targetId).toBe('stream-studio-3');
+      expect(items[2].actionType).toBe('stream_end');
+      expect(items[2].durationMinutes).toBe(120);
+    });
+
+    it('YouTube Studio Creator API (list_creator_posts) の実データ形式を正確に抽出すること', () => {
+      const mockCreatorPostsResponse = {
+        posts: [
+          {
+            postId: 'post-studio-1',
+            contentText: { runs: [{ text: '明日のコラボ配信について告知！' }] },
+            publishTime: '1700600000',
+            attachment: { attachmentType: 'POST_ATTACHMENT_TYPE_ENUM_POLL' },
+          },
+        ],
+      };
+
+      const items = extractYouTubePassiveActivities(mockCreatorPostsResponse);
+      expect(items.length).toBe(1);
+      expect(items[0].platform).toBe('youtube');
+      expect(items[0].actionType).toBe('community_post');
+      expect(items[0].targetId).toBe('post-studio-1');
+      expect(items[0].title).toBe('[アンケート] 明日のコラボ配信について告知！');
+      expect(items[0].timestamp).toBe(1700600000000);
+    });
+
     it('不正または空のレスポンスに対して安全に空配列を返すこと', () => {
       expect(extractYouTubePassiveActivities({})).toEqual([]);
       expect(extractYouTubePassiveActivities({ error: 'invalid' })).toEqual([]);

@@ -1,7 +1,7 @@
 import { BulkActivityItem } from '../types';
 
 /**
- * X (旧Twitter) の UserTweets, UserTweetsAndReplies, Likes レスポンスから過去アクティビティを抽出する純粋関数
+ * X (旧Twitter) の UserOriginalsTimeline, UserRepliesTimeline, UserTweets, Likes レスポンスから過去アクティビティを抽出する純粋関数
  * @param url リクエストURL
  * @param responseData GraphQLレスポンスオブジェクト
  */
@@ -15,7 +15,7 @@ export function extractXPassiveActivities(url: string, responseData: Record<stri
   const seenIds = new Set<string>();
 
   function searchTweets(node: unknown, depth: number) {
-    if (!node || typeof node !== 'object' || depth > 15) return;
+    if (!node || typeof node !== 'object' || depth > 20) return;
 
     if (Array.isArray(node)) {
       for (const item of node) {
@@ -26,7 +26,7 @@ export function extractXPassiveActivities(url: string, responseData: Record<stri
 
     const obj = node as Record<string, unknown>;
 
-    // tweet_results.result の検知
+    // 1. tweet_results.result の検知 (TimelineTimelineItem または会話モジュール内アイテム)
     if (obj.tweet_results && typeof obj.tweet_results === 'object') {
       const res = (obj.tweet_results as { result?: Record<string, unknown> }).result;
       if (res) {
@@ -34,6 +34,22 @@ export function extractXPassiveActivities(url: string, responseData: Record<stri
         if (item && item.targetId && !seenIds.has(item.targetId)) {
           seenIds.add(item.targetId);
           results.push(item);
+        }
+      }
+    }
+
+    // 2. 会話モジュール (TimelineTimelineModule) の items 配列直接検知
+    if (Array.isArray(obj.items)) {
+      for (const subItem of obj.items) {
+        if (subItem && typeof subItem === 'object') {
+          const itemContent = (subItem as { item?: { itemContent?: { tweet_results?: { result?: Record<string, unknown> } } } })?.item?.itemContent;
+          if (itemContent?.tweet_results?.result) {
+            const parsed = parseSingleTweetResult(itemContent.tweet_results.result, isLikesEndpoint);
+            if (parsed && parsed.targetId && !seenIds.has(parsed.targetId)) {
+              seenIds.add(parsed.targetId);
+              results.push(parsed);
+            }
+          }
         }
       }
     }
