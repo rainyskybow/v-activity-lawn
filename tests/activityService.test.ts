@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { bulkImportActivities, getTodaySummary, getActivitiesByDate, removeActivitiesByTargetIds, getAvailableYears } from '../src/storage/activityService';
+import { bulkImportActivities, getTodaySummary, getActivitiesByDate, removeActivitiesByTargetIds, getAvailableYears, cleanInvalidTestActivities } from '../src/storage/activityService';
 import { db } from '../src/storage/db';
 import { ActivityRecord } from '../src/types';
 
@@ -150,5 +150,53 @@ describe('activityService bulkImportActivities', () => {
     expect(years.includes(2022)).toBe(true);
     // 降順ソートされていること
     expect(years[0]).toBeGreaterThanOrEqual(years[years.length - 1]);
+  });
+
+  it('cleanInvalidTestActivitiesで誤登録された非公開テスト配信が一括削除されサマリーが再計算されること', async () => {
+    const records: ActivityRecord[] = [
+      {
+        id: 'youtube-test-1',
+        platform: 'youtube',
+        actionType: 'stream_end',
+        targetId: 'test-1',
+        title: '負荷テスト3',
+        score: 8,
+        timestamp: Date.now(),
+        dateString: '2026-11-09',
+      },
+      {
+        id: 'youtube-test-2',
+        platform: 'youtube',
+        actionType: 'stream_end',
+        targetId: 'test-2',
+        title: 'Minecraft Test',
+        score: 8,
+        timestamp: Date.now(),
+        dateString: '2026-11-09',
+      },
+      {
+        id: 'youtube-real-1',
+        platform: 'youtube',
+        actionType: 'video_publish',
+        targetId: 'real-1',
+        title: '本番公開動画',
+        score: 15,
+        timestamp: Date.now(),
+        dateString: '2026-11-09',
+      },
+    ];
+    await bulkImportActivities(records);
+    let summary = await db.daily_summaries.get('2026-11-09');
+    expect(summary?.totalScore).toBe(31);
+
+    const cleanedCount = await cleanInvalidTestActivities();
+    expect(cleanedCount).toBe(2);
+
+    expect(await db.activities.get('youtube-test-1')).toBeUndefined();
+    expect(await db.activities.get('youtube-test-2')).toBeUndefined();
+    expect(await db.activities.get('youtube-real-1')).toBeDefined();
+
+    summary = await db.daily_summaries.get('2026-11-09');
+    expect(summary?.totalScore).toBe(15);
   });
 });

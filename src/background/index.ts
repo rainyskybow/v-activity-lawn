@@ -1,4 +1,11 @@
-import { addActivity, bulkImportActivities, getTodaySummary, refreshStreaks, removeActivitiesByTargetIds } from '../storage/activityService';
+import {
+  addActivity,
+  bulkImportActivities,
+  getTodaySummary,
+  refreshStreaks,
+  removeActivitiesByTargetIds,
+  cleanInvalidTestActivities,
+} from '../storage/activityService';
 import { getSettings } from '../storage/settingsService';
 import { fetchYouTubeChannelRss } from '../sync/youtubeRss';
 import { RuntimeMessage, ActivityRecord } from '../types';
@@ -50,6 +57,14 @@ async function syncYouTubeRssInBackground() {
 // 拡張機能インストール・更新時の初期化
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[v-activity-lawn] Extension installed/updated.');
+  // 過去に誤登録された非公開テスト配信等のクリーンアップ
+  cleanInvalidTestActivities().then((cnt) => {
+    if (cnt > 0) {
+      console.log(`[v-activity-lawn] Cleaned up ${cnt} invalid test activities.`);
+      updateBadge().catch(() => {});
+    }
+  }).catch(() => {});
+
   // 60分ごとの定期日次メンテナンスおよびRSS自動取得アラームを設定
   chrome.alarms.create('DAILY_MAINTENANCE_ALARM', {
     periodInMinutes: 60,

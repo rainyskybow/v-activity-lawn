@@ -381,3 +381,35 @@ export async function getAvailableYears(): Promise<number[]> {
     return Array.from(yearsSet).sort((a, b) => b - a);
   });
 }
+
+/**
+ * 過去に誤登録された非公開テスト配信・仮枠アクティビティを一括検知・安全に削除し、日次集計とストリークを再計算する
+ */
+export async function cleanInvalidTestActivities(): Promise<number> {
+  return await withDbRetry(async () => {
+    // 誤登録されやすい非公開テスト配信・空枠タイトルの正規表現
+    const testPattern = /(?:テスト|test|【\s*】|自分の配信|仮枠立て|負荷テスト|引っ越し後|直前テスト|ビットレート)/i;
+
+    const allActivities = await db.activities.toArray();
+    const toDeleteIds: string[] = [];
+    const affectedDates = new Set<string>();
+
+    for (const act of allActivities) {
+      if (act.platform === 'youtube') {
+        const title = act.title || '';
+        if (!title.trim() || testPattern.test(title)) {
+          toDeleteIds.push(act.id);
+          affectedDates.add(act.dateString);
+        }
+      }
+    }
+
+    if (toDeleteIds.length === 0) return 0;
+
+    await db.activities.bulkDelete(toDeleteIds);
+    await refreshDailySummariesBatch(Array.from(affectedDates));
+    await refreshStreaks();
+
+    return toDeleteIds.length;
+  });
+}

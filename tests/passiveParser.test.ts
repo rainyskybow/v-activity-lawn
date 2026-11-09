@@ -251,6 +251,16 @@ describe('passiveParser', () => {
       expect(isYouTubeItemPrivate({ privacyStatus: 'PRIVACY_STATUS_PRIVATE' })).toBe(true);
       expect(isYouTubeItemPrivate({ badges: [{ label: '非公開' }] })).toBe(true);
       expect(isYouTubeItemPrivate({ privacy: 'PUBLIC' })).toBe(false);
+
+      // 4. 実機で確認された VIDEO_PRIVACY_PRIVATE や visibility オブジェクトの除外判定
+      expect(isYouTubeItemPrivate({
+        privacy: 'VIDEO_PRIVACY_PRIVATE',
+        visibility: { userSetVisibility: 'VIDEO_USER_SET_VISIBILITY_PRIVATE' },
+        timePublishedSeconds: '0',
+      })).toBe(true);
+
+      // 5. 限定公開の動画も判定されること
+      expect(isYouTubeItemPrivate({ privacy: 'VIDEO_PRIVACY_UNLISTED' })).toBe(true);
     });
 
     it('不正または空のレスポンスに対して安全に空配列を返すこと', () => {

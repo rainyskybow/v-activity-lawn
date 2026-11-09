@@ -50,28 +50,31 @@ function extractText(obj: unknown): string {
 }
 
 /**
- * YouTube の動画/投稿アイテムが非公開（PRIVATE）かどうかを判定する
+ * YouTube の動画/投稿アイテムが非公開（PRIVATE）または未公開かどうかを判定する
  */
 export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
   if (!item || typeof item !== 'object') return false;
 
-  // 1. 直下文字列フィールドの判定
+  // 1. 直下文字列フィールドの判定（VIDEO_PRIVACY_PRIVATE, PRIVACY_STATUS_PRIVATE 等を包括判定）
   const privacyFields = [
     item.privacy,
     item.privacyStatus,
     item.visibility,
     item.privacyState,
     item.visibilityStatus,
+    item.draftStatus,
   ];
 
   for (const val of privacyFields) {
     if (typeof val === 'string') {
       const upper = val.toUpperCase();
       if (
-        upper === 'PRIVATE' ||
-        upper === 'PRIVACY_STATUS_PRIVATE' ||
-        upper === 'PRIVACY_PRIVATE' ||
-        val === '非公開'
+        upper.includes('PRIVATE') ||
+        upper.includes('DRAFT') ||
+        upper.includes('UNLISTED') ||
+        val === '非公開' ||
+        val === '限定公開' ||
+        val === '下書き'
       ) {
         return true;
       }
@@ -81,15 +84,10 @@ export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
   // 2. ネストオブジェクト（status や visibility）の判定
   if (item.status && typeof item.status === 'object') {
     const statusObj = item.status as Record<string, unknown>;
-    const pStatus = statusObj.privacyStatus || statusObj.privacy;
+    const pStatus = statusObj.privacyStatus || statusObj.privacy || statusObj.status;
     if (typeof pStatus === 'string') {
       const upper = pStatus.toUpperCase();
-      if (
-        upper === 'PRIVATE' ||
-        upper === 'PRIVACY_STATUS_PRIVATE' ||
-        upper === 'PRIVACY_PRIVATE' ||
-        pStatus === '非公開'
-      ) {
+      if (upper.includes('PRIVATE') || upper.includes('DRAFT') || pStatus === '非公開') {
         return true;
       }
     }
@@ -97,16 +95,28 @@ export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
 
   if (item.visibility && typeof item.visibility === 'object') {
     const visObj = item.visibility as Record<string, unknown>;
-    const vStatus = visObj.privacyStatus || visObj.privacy || visObj.type;
-    if (typeof vStatus === 'string') {
-      const upper = vStatus.toUpperCase();
-      if (
-        upper === 'PRIVATE' ||
-        upper === 'PRIVACY_STATUS_PRIVATE' ||
-        upper === 'PRIVACY_PRIVATE' ||
-        vStatus === '非公開'
-      ) {
-        return true;
+    const vStatusFields = [
+      visObj.userSetVisibility,
+      visObj.effectiveVisibility,
+      visObj.effectiveStatus,
+      visObj.privacyStatus,
+      visObj.privacy,
+      visObj.type,
+    ];
+
+    for (const vStatus of vStatusFields) {
+      if (typeof vStatus === 'string') {
+        const upper = vStatus.toUpperCase();
+        if (
+          upper.includes('PRIVATE') ||
+          upper.includes('DRAFT') ||
+          upper.includes('UNLISTED') ||
+          vStatus === '非公開' ||
+          vStatus === '限定公開' ||
+          vStatus === '下書き'
+        ) {
+          return true;
+        }
       }
     }
   }
@@ -114,7 +124,16 @@ export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
   // 3. badges や label の検査
   if (Array.isArray(item.badges)) {
     const badgesStr = JSON.stringify(item.badges);
-    if (badgesStr.includes('非公開') || /"PRIVATE"/i.test(badgesStr)) {
+    if (badgesStr.includes('非公開') || badgesStr.includes('限定公開') || /PRIVATE|UNLISTED/i.test(badgesStr)) {
+      return true;
+    }
+  }
+
+  // 4. timePublishedSeconds が "0"（または 0）で、かつ明示的に PUBLIC ではない動画（未公開・テスト枠・非公開）
+  const pubSecStr = String(item.timePublishedSeconds ?? '').trim();
+  if (pubSecStr === '0') {
+    const privUpper = String(item.privacy ?? '').toUpperCase();
+    if (!privUpper.includes('PUBLIC')) {
       return true;
     }
   }
@@ -276,25 +295,40 @@ function parseCreatorVideoItem(v: Record<string, unknown>): BulkActivityItem | n
   const videoId = v.videoId as string;
   if (!videoId) return null;
 
-  // 【最重要】非公開（PRIVATE）の動画は除外する
+  // 【最重要】非公開（PRIVATE）または未公開・下書きの動画は除外する
   if (isYouTubeItemPrivate(v)) {
     return null;
   }
 
-  const title = (v.title as string) || '動画';
-  const timePublishedSec = v.timePublishedSeconds || v.timeCreatedSeconds;
-  let timestamp = Date.now();
-  if (timePublishedSec) {
-    const parsedSec = Number(timePublishedSec);
-    if (!isNaN(parsedSec) && parsedSec > 0) {
-      timestamp = parsedSec * 1000;
+  // 有効な正の秒数タイムスタンプを安全にパース
+  const parseValidSec = (val: unknown): number => {
+    if (typeof val === 'number' && !isNaN(val) && val > 0) return val;
+    if (typeof val === 'string') {
+      const n = Number(val.trim());
+      if (!isNaN(n) && n > 0) return n;
     }
+    return 0;
+  };
+
+  const pubSec = parseValidSec(v.timePublishedSeconds);
+  const createSec = parseValidSec(v.timeCreatedSeconds);
+  const validSec = pubSec > 0 ? pubSec : createSec;
+
+  // 有効な正の公開日時または作成日時が一切取得できない場合は Date.now() にフォールバックせず除外する
+  // （非公開・未公開動画が今日の日付に化けて草に登録されるのを完全に防止）
+  if (validSec <= 0) {
+    return null;
   }
 
+  const timestamp = validSec * 1000;
+  const title = (v.title as string) || '動画';
   const contentType = v.contentType as string;
   const origin = v.origin as string;
   const isShorts = contentType === 'CREATOR_CONTENT_TYPE_SHORTS' || /#shorts/i.test(title);
-  const isStream = origin === 'VIDEO_ORIGIN_LIVESTREAM' || Boolean(v.livestream);
+  const isStream =
+    origin === 'VIDEO_ORIGIN_LIVESTREAM' ||
+    Boolean(v.livestream) ||
+    contentType === 'CREATOR_CONTENT_TYPE_LIVE_STREAM';
 
   let actionType: 'video_publish' | 'shorts_publish' | 'stream_end' = 'video_publish';
   if (isStream) {
@@ -386,16 +420,21 @@ function parseSingleVideoRenderer(r: Record<string, unknown>): BulkActivityItem 
 
   const title = extractText(r.title) || extractText(r.headline) || '動画';
 
-  let timestamp = Date.now();
-  if (r.releaseTimeMs) {
+  let timestamp = 0;
+  if (r.releaseTimeMs && Number(r.releaseTimeMs) > 0) {
     timestamp = Number(r.releaseTimeMs);
-  } else if (r.creationTimeMs) {
+  } else if (r.creationTimeMs && Number(r.creationTimeMs) > 0) {
     timestamp = Number(r.creationTimeMs);
   } else if (r.publishedTimeText) {
     const text = extractText(r.publishedTimeText);
     if (text) {
       timestamp = parseRelativeTimeString(text);
     }
+  }
+
+  // 有効なタイムスタンプが一切ない場合は除外
+  if (!timestamp || timestamp <= 0) {
+    return null;
   }
 
   const isShorts = Boolean(/#shorts/i.test(title) || (r.lengthSeconds && Number(r.lengthSeconds) <= 60));

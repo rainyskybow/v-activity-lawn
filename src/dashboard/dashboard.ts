@@ -5,6 +5,7 @@ import {
   getActivitiesByDate,
   bulkImportActivities,
   getAvailableYears,
+  cleanInvalidTestActivities,
 } from '../storage/activityService';
 import { getSettings, updateSettings } from '../storage/settingsService';
 import { renderLawnSvg, COLOR_PALETTES } from '../components/lawnGraph';
@@ -144,6 +145,11 @@ async function updateYearView() {
 }
 
 async function loadData() {
+  // 誤登録されたテスト配信の安全なクリーンアップ
+  try {
+    await cleanInvalidTestActivities();
+  } catch {}
+
   const settings = await getSettings();
   currentTheme = settings.themeColor;
   isDarkMode = settings.darkMode;
