@@ -109,7 +109,7 @@ export interface BulkActivityItem {
 export type ViewFilterType =
   | 'all'              // 総合稼働草
   | 'works'            // 動画・配信（作品）のみ
-  | 'interactions'     // ファン交流（返信・ハート・Xポスト）のみ
+  | 'interactions'     // YouTube投稿（コミュニティ投稿）のみ
   | 'youtube'          // YouTubeのみ
   | 'x';               // Xのみ
 

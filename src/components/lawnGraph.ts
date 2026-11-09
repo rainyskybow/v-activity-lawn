@@ -91,10 +91,10 @@ export function filterSummary(
   }
 
   if (filter === 'interactions') {
-    // ファン交流のみ（返信、ハート、Xポスト、リプライ、リポスト、いいね）
-    const score = Math.round((summary.totalScore - (summary.breakdown.videoPublishCount * 15 + summary.breakdown.shortsPublishCount * 6)) * 10) / 10;
+    // YouTube投稿のみ（コミュニティ投稿・アンケート）
+    const score = summary.breakdown.communityPostCount * 4;
     return {
-      score: Math.max(0, score),
+      score,
       level: calculateLawnLevel(score, false),
       hasSpecialMilestone: false,
     };
