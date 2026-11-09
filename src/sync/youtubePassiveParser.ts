@@ -51,13 +51,14 @@ function extractText(obj: unknown): string {
 
 /**
  * YouTube の動画/投稿アイテムが非公開（PRIVATE）または未公開かどうかを判定する
+ * ※「限定公開」（UNLISTED）はクリエイターの正当な活動成果物（メンバー限定配信・限定アーカイブ等）として取得対象に含めます。
  */
 export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
   if (!item || typeof item !== 'object') return false;
 
-  // 0. 明示的な公開（PUBLIC）判定（最優先ホワイトリスト）
+  // 0. 明示的な公開（PUBLIC）または限定公開（UNLISTED）判定（最優先ホワイトリスト）
   // YouTube Studio API では公開動画であっても draftStatus: 'DRAFT_STATUS_NONE' が設定されるため、
-  // 公開設定が明示されている場合は非公開と判定しない。
+  // 公開または限定公開の設定が明示されている場合は非公開と判定しない。
   const privStr = String(item.privacy ?? item.privacyStatus ?? '').toUpperCase();
   const visObj =
     typeof item.visibility === 'object' && item.visibility !== null
@@ -66,32 +67,36 @@ export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
   const userSetVis = String(visObj.userSetVisibility ?? '').toUpperCase();
   const effVis = String(visObj.effectiveVisibility ?? '').toUpperCase();
 
-  const isExplicitlyPublic =
+  const isExplicitlyPublicOrUnlisted =
     privStr === 'VIDEO_PRIVACY_PUBLIC' ||
     privStr === 'PUBLIC' ||
+    privStr === 'VIDEO_PRIVACY_UNLISTED' ||
+    privStr === 'UNLISTED' ||
     userSetVis === 'VIDEO_USER_SET_VISIBILITY_PUBLIC' ||
     userSetVis === 'PUBLIC' ||
-    effVis === 'VIDEO_EFFECTIVE_VISIBILITY_PUBLIC';
+    userSetVis === 'VIDEO_USER_SET_VISIBILITY_UNLISTED' ||
+    userSetVis === 'UNLISTED' ||
+    effVis === 'VIDEO_EFFECTIVE_VISIBILITY_PUBLIC' ||
+    effVis === 'VIDEO_EFFECTIVE_VISIBILITY_UNLISTED';
 
-  // 下書きや非公開・限定公開の文字列判定関数
+  // 下書きや非公開（PRIVATE）の文字列判定関数
+  // ※ UNLISTED や 限定公開 は取得対象とするため、ここでは除外判定しない
   const isPrivateOrDraftString = (val: unknown): boolean => {
     if (typeof val !== 'string') return false;
     const trimmed = val.trim();
     const upper = trimmed.toUpperCase();
 
-    // DRAFT_STATUS_NONE は「下書きではない（＝公開・確定）」状態を表すため非公開と判定しない
+    // DRAFT_STATUS_NONE は「下書きではない（＝確定済み）」状態を表すため非公開と判定しない
     if (upper === 'DRAFT_STATUS_NONE') {
       return false;
     }
 
     if (
       upper.includes('PRIVATE') ||
-      upper.includes('UNLISTED') ||
       upper === 'DRAFT' ||
       upper.startsWith('DRAFT_') ||
       upper.endsWith('_DRAFT') ||
       trimmed === '非公開' ||
-      trimmed === '限定公開' ||
       trimmed === '下書き'
     ) {
       return true;
@@ -100,8 +105,16 @@ export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
     return false;
   };
 
-  // もし明示的に公開（PUBLIC）であり、直接のフィールドに非公開/限定公開/下書き指定がなければ公開（false）とする
-  if (isExplicitlyPublic) {
+  // 未配信の未来予定枠・テンプレート枠の除外（stage === 'VIDEO_LIVESTREAM_STAGE_FUTURE'）
+  if (item.livestream && typeof item.livestream === 'object') {
+    const lsObj = item.livestream as Record<string, unknown>;
+    if (lsObj.stage === 'VIDEO_LIVESTREAM_STAGE_FUTURE') {
+      return true;
+    }
+  }
+
+  // もし明示的に公開または限定公開であり、直接のフィールドに非公開/下書き指定がなければ非公開ではない（false）とする
+  if (isExplicitlyPublicOrUnlisted) {
     const directPrivate =
       isPrivateOrDraftString(item.privacy) ||
       isPrivateOrDraftString(item.privacyStatus) ||
@@ -154,19 +167,19 @@ export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
     }
   }
 
-  // 3. badges や label の検査
+  // 3. badges や label の検査（※限定公開は含めない）
   if (Array.isArray(item.badges)) {
     const badgesStr = JSON.stringify(item.badges);
-    if (badgesStr.includes('非公開') || badgesStr.includes('限定公開') || /PRIVATE|UNLISTED/i.test(badgesStr)) {
+    if (badgesStr.includes('非公開') || /PRIVATE/i.test(badgesStr)) {
       return true;
     }
   }
 
-  // 4. timePublishedSeconds が "0"（または 0）で、かつ明示的に PUBLIC ではない動画（未公開・テスト枠・非公開）
+  // 4. timePublishedSeconds が "0"（または 0）で、かつ明示的に PUBLIC / UNLISTED ではない動画（未公開・テスト枠・非公開）
   const pubSecStr = String(item.timePublishedSeconds ?? '').trim();
-  if (pubSecStr === '0') {
+  if (pubSecStr === '0' || item.timePublishedSeconds === 0) {
     const privUpper = String(item.privacy ?? '').toUpperCase();
-    if (!privUpper.includes('PUBLIC')) {
+    if (!privUpper.includes('PUBLIC') && !privUpper.includes('UNLISTED')) {
       return true;
     }
   }
@@ -344,8 +357,12 @@ function parseCreatorVideoItem(v: Record<string, unknown>): BulkActivityItem | n
   };
 
   const pubSec = parseValidSec(v.timePublishedSeconds);
+  const streamSec =
+    v.livestream && typeof v.livestream === 'object'
+      ? parseValidSec((v.livestream as Record<string, unknown>).actualStartTimeSeconds)
+      : 0;
   const createSec = parseValidSec(v.timeCreatedSeconds);
-  const validSec = pubSec > 0 ? pubSec : createSec;
+  const validSec = pubSec > 0 ? pubSec : streamSec > 0 ? streamSec : createSec;
 
   // 有効な正の公開日時または作成日時が一切取得できない場合は Date.now() にフォールバックせず除外する
   // （非公開・未公開動画が今日の日付に化けて草に登録されるのを完全に防止）

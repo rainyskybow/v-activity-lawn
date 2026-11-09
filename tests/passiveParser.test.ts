@@ -259,8 +259,14 @@ describe('passiveParser', () => {
         timePublishedSeconds: '0',
       })).toBe(true);
 
-      // 5. 限定公開の動画も判定されること
-      expect(isYouTubeItemPrivate({ privacy: 'VIDEO_PRIVACY_UNLISTED' })).toBe(true);
+      // 5. 限定公開（UNLISTED）の動画は活動実績として取得対象（非公開判定されない）となること
+      expect(isYouTubeItemPrivate({ privacy: 'VIDEO_PRIVACY_UNLISTED' })).toBe(false);
+      expect(isYouTubeItemPrivate({ privacy: 'UNLISTED' })).toBe(false);
+      expect(isYouTubeItemPrivate({
+        privacy: 'VIDEO_PRIVACY_UNLISTED',
+        visibility: { userSetVisibility: 'VIDEO_USER_SET_VISIBILITY_UNLISTED' },
+        timePublishedSeconds: '1720497632',
+      })).toBe(false);
 
       // 6. YouTube Studio 実機データ: 公開動画の draftStatus: 'DRAFT_STATUS_NONE' が非公開と誤爆判定されないこと
       const studioPublicVideo = {
@@ -277,14 +283,18 @@ describe('passiveParser', () => {
       };
       expect(isYouTubeItemPrivate(studioPublicVideo)).toBe(false);
 
-      // 7. 真正の下書き（DRAFT）ステータスは非公開と判定されること
+      // 7. 真正の下書き（DRAFT）ステータスや未来予定枠は非公開・除外と判定されること
       expect(isYouTubeItemPrivate({ draftStatus: 'DRAFT_STATUS_DRAFT' })).toBe(true);
       expect(isYouTubeItemPrivate({ draftStatus: 'DRAFT' })).toBe(true);
+      expect(isYouTubeItemPrivate({
+        livestream: { stage: 'VIDEO_LIVESTREAM_STAGE_FUTURE' },
+      })).toBe(true);
     });
 
-    it('YouTube Studio 実機レスポンス（DRAFT_STATUS_NONEを含む公開動画と非公開テスト配信の混在）を正確に分類すること', () => {
+    it('YouTube Studio 実機レスポンス（公開動画・限定公開動画・非公開テスト配信の混在）を正確に分類すること', () => {
       const mockStudioRealResponse = {
         videos: [
+          // 1. 公開動画
           {
             videoId: 'pub-real-1',
             title: '初配信_ノイズ軽減-BGM追加',
@@ -299,8 +309,24 @@ describe('passiveParser', () => {
             lengthSeconds: '7800',
             contentType: 'CREATOR_CONTENT_TYPE_VIDEO',
           },
+          // 2. 限定公開動画（メンバーシップ限定・ファン限定動画等）
           {
-            videoId: 'priv-test-stream-2',
+            videoId: 'unlisted-real-2',
+            title: 'コンピューターの豆知識シリーズShorts総編集！',
+            privacy: 'VIDEO_PRIVACY_UNLISTED',
+            visibility: {
+              userSetVisibility: 'VIDEO_USER_SET_VISIBILITY_UNLISTED',
+              effectiveVisibility: 'VIDEO_EFFECTIVE_VISIBILITY_USER_CONFIG',
+            },
+            draftStatus: 'DRAFT_STATUS_NONE',
+            status: 'VIDEO_STATUS_PROCESSED',
+            timePublishedSeconds: '1720497632',
+            lengthSeconds: '360',
+            contentType: 'CREATOR_CONTENT_TYPE_VIDEO',
+          },
+          // 3. 非公開テスト配信（除外対象）
+          {
+            videoId: 'priv-test-stream-3',
             title: '負荷テスト3',
             privacy: 'VIDEO_PRIVACY_PRIVATE',
             visibility: {
@@ -316,14 +342,20 @@ describe('passiveParser', () => {
       };
 
       const extracted = extractYouTubePassiveActivities(mockStudioRealResponse, 'https://studio.youtube.com/youtubei/v1/creator/list_creator_videos');
-      expect(extracted.length).toBe(1);
+      expect(extracted.length).toBe(2);
+
       expect(extracted[0].targetId).toBe('pub-real-1');
       expect(extracted[0].title).toBe('初配信_ノイズ軽減-BGM追加');
       expect(extracted[0].durationMinutes).toBe(130);
       expect(extracted[0].timestamp).toBe(1746529232000);
 
+      expect(extracted[1].targetId).toBe('unlisted-real-2');
+      expect(extracted[1].title).toBe('コンピューターの豆知識シリーズShorts総編集！');
+      expect(extracted[1].durationMinutes).toBe(6);
+      expect(extracted[1].timestamp).toBe(1720497632000);
+
       const privateIds = extractYouTubePrivateTargetIds(mockStudioRealResponse);
-      expect(privateIds).toEqual(['priv-test-stream-2']);
+      expect(privateIds).toEqual(['priv-test-stream-3']);
     });
 
     it('不正または空のレスポンスに対して安全に空配列を返すこと', () => {

@@ -176,7 +176,13 @@ import { BulkActivityItem } from '../types';
           (title && /#shorts/i.test(title))
         );
 
-        if (privacy === 'PUBLIC' || responseData.privacyStatus === 'PUBLIC') {
+        const isPublicOrUnlisted =
+          privacy === 'PUBLIC' ||
+          privacy === 'UNLISTED' ||
+          responseData.privacyStatus === 'PUBLIC' ||
+          responseData.privacyStatus === 'UNLISTED';
+
+        if (isPublicOrUnlisted) {
           if (isShorts) {
             emitActivity('shorts_publish', { targetId: videoId, title: title || 'ショート動画' });
           } else {
