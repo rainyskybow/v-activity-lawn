@@ -111,6 +111,7 @@ export interface RenderLawnOptions {
   filter: ViewFilterType;
   onCellClick?: (date: string, summary?: DailySummary) => void;
   weeksCount?: number; // 指定なしは 53週（年間）
+  dates?: string[];    // 指定した日付配列（年度別グリッドなど、指定時は最優先）
 }
 
 /**
@@ -131,10 +132,11 @@ export function renderLawnSvg(
   const palette = COLOR_PALETTES[themeColor] || COLOR_PALETTES.green;
   const colors = darkMode ? palette.dark : palette.light;
 
-  // 日付グリッド配列を生成（53週 × 7日 = 371日分）
+  // 日付グリッド配列（外部指定の dates があれば優先、なければ直近53週から切り出し）
   const allDates = generatePast53WeeksGrid(formatDateString(), weekStartDay);
-  // 表示週数に合わせて切り出し
-  const dates = allDates.slice(-(weeksCount * 7));
+  const dates = options.dates && options.dates.length > 0
+    ? options.dates
+    : allDates.slice(-(weeksCount * 7));
 
   const totalWeeks = Math.ceil(dates.length / 7);
   const leftLabelWidth = 24;

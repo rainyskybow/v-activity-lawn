@@ -345,3 +345,39 @@ export async function getOverallStats(targetDates?: string[]): Promise<{
     };
   });
 }
+
+/**
+ * DB内に存在するアクティビティまたは日次サマリーから、記録のある年度リスト（降順、例: [2026, 2025, 2024]）を取得する
+ */
+export async function getAvailableYears(): Promise<number[]> {
+  return await withDbRetry(async () => {
+    const currentYear = new Date().getFullYear();
+    const yearsSet = new Set<number>();
+    yearsSet.add(currentYear);
+
+    // daily_summaries から年度を収集
+    const summaries = await db.daily_summaries.toArray();
+    for (const s of summaries) {
+      if (s.date) {
+        const y = parseInt(s.date.split('-')[0], 10);
+        if (!isNaN(y) && y >= 2005 && y <= currentYear + 1) {
+          yearsSet.add(y);
+        }
+      }
+    }
+
+    // activities テーブルからも年度を収集
+    const oldestActivity = await db.activities.orderBy('timestamp').first();
+    if (oldestActivity && oldestActivity.dateString) {
+      const y = parseInt(oldestActivity.dateString.split('-')[0], 10);
+      if (!isNaN(y) && y >= 2005 && y <= currentYear + 1) {
+        yearsSet.add(y);
+      }
+    }
+
+    // 過去最低でも前年は常に選択肢に含める
+    yearsSet.add(currentYear - 1);
+
+    return Array.from(yearsSet).sort((a, b) => b - a);
+  });
+}

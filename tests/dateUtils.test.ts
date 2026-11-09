@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDateString, diffDays, addDays, generatePast53WeeksGrid } from '../src/utils/dateUtils';
+import { formatDateString, diffDays, addDays, generatePast53WeeksGrid, generateYearGrid } from '../src/utils/dateUtils';
 
 describe('dateUtils', () => {
   it('formatDateString が YYYY-MM-DD 形式の文字列を返すこと', () => {
@@ -24,5 +24,13 @@ describe('dateUtils', () => {
 
     const gridMonday = generatePast53WeeksGrid('2026-11-08', 1);
     expect(gridMonday.length).toBe(371);
+  });
+
+  it('generateYearGrid が指定した年の1年間を含む371日分の日付配列を生成すること', () => {
+    const grid2025 = generateYearGrid(2025, 0);
+    expect(grid2025.length).toBe(371);
+    // 2025-01-01 および 2025-12-31 が配列内に含まれること
+    expect(grid2025.includes('2025-01-01')).toBe(true);
+    expect(grid2025.includes('2025-12-31')).toBe(true);
   });
 });

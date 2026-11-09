@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { bulkImportActivities, getTodaySummary, getActivitiesByDate, removeActivitiesByTargetIds } from '../src/storage/activityService';
+import { bulkImportActivities, getTodaySummary, getActivitiesByDate, removeActivitiesByTargetIds, getAvailableYears } from '../src/storage/activityService';
 import { db } from '../src/storage/db';
 import { ActivityRecord } from '../src/types';
 
@@ -127,5 +127,28 @@ describe('activityService bulkImportActivities', () => {
 
     summary = await db.daily_summaries.get('2023-11-20');
     expect(summary?.totalScore).toBe(0);
+  });
+
+  it('getAvailableYearsで記録されている年度リストが降順で正しく取得できること', async () => {
+    const records: ActivityRecord[] = [
+      {
+        id: 'rec-2022',
+        platform: 'youtube',
+        actionType: 'video_publish',
+        targetId: 'v-2022',
+        title: '2022年の動画',
+        score: 15,
+        timestamp: 1650000000000,
+        dateString: '2022-04-15',
+      },
+    ];
+    await bulkImportActivities(records);
+
+    const years = await getAvailableYears();
+    const currentYear = new Date().getFullYear();
+    expect(years.includes(currentYear)).toBe(true);
+    expect(years.includes(2022)).toBe(true);
+    // 降順ソートされていること
+    expect(years[0]).toBeGreaterThanOrEqual(years[years.length - 1]);
   });
 });

@@ -69,8 +69,34 @@
     <!-- 年間コントリビューショングラフセクション -->
     <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm mb-8">
       
+      <!-- グラフ上部ヘッダー（年度タイトル・前年翌年ナビ・GitHub風年選択ボタン） -->
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
+        
+        <!-- 左側：選択中年度タイトルと送りボタン -->
+        <div class="flex items-center space-x-3">
+          <h2 class="text-base font-bold text-gray-900 dark:text-white flex items-center space-x-2">
+            <span id="label-selected-year" class="text-green-600 dark:text-green-400">直近1年間</span>
+            <span>の活動草</span>
+          </h2>
+          <div class="flex items-center space-x-1">
+            <button id="btn-prev-year" class="p-1 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition" title="前年へ">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <button id="btn-next-year" class="p-1 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition" title="翌年へ">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 右側：GitHub風 年度選択ボタン一覧 -->
+        <div class="flex items-center space-x-1.5 overflow-x-auto py-1" id="year-selector-container">
+          <!-- JSで動的にボタン生成: [直近1年] [2026] [2025] ... -->
+        </div>
+
+      </div>
+
       <!-- グラフ上部フィルタ・テーマコントロールバー -->
-      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-4 mb-5">
+      <div class="flex flex-wrap items-center justify-between gap-4 pb-2 mb-4">
         
         <!-- フィルタ切り替えタブ -->
         <div class="flex items-center space-x-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg text-xs font-semibold">

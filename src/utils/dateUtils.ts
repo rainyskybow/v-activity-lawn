@@ -72,3 +72,13 @@ export function generatePast53WeeksGrid(
 
   return result;
 }
+
+/**
+ * 指定した年（1月1日〜12月31日を含む53週分）の日付配列（古い順）を生成する
+ * @param year 対象年（例: 2025）
+ * @param weekStartDay 0: 日曜始まり, 1: 月曜始まり
+ */
+export function generateYearGrid(year: number, weekStartDay: 0 | 1 = 0): string[] {
+  const endDateStr = `${year}-12-31`;
+  return generatePast53WeeksGrid(endDateStr, weekStartDay);
+}
