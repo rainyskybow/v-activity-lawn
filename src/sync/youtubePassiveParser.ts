@@ -55,7 +55,64 @@ function extractText(obj: unknown): string {
 export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
   if (!item || typeof item !== 'object') return false;
 
-  // 1. 直下文字列フィールドの判定（VIDEO_PRIVACY_PRIVATE, PRIVACY_STATUS_PRIVATE 等を包括判定）
+  // 0. 明示的な公開（PUBLIC）判定（最優先ホワイトリスト）
+  // YouTube Studio API では公開動画であっても draftStatus: 'DRAFT_STATUS_NONE' が設定されるため、
+  // 公開設定が明示されている場合は非公開と判定しない。
+  const privStr = String(item.privacy ?? item.privacyStatus ?? '').toUpperCase();
+  const visObj =
+    typeof item.visibility === 'object' && item.visibility !== null
+      ? (item.visibility as Record<string, unknown>)
+      : {};
+  const userSetVis = String(visObj.userSetVisibility ?? '').toUpperCase();
+  const effVis = String(visObj.effectiveVisibility ?? '').toUpperCase();
+
+  const isExplicitlyPublic =
+    privStr === 'VIDEO_PRIVACY_PUBLIC' ||
+    privStr === 'PUBLIC' ||
+    userSetVis === 'VIDEO_USER_SET_VISIBILITY_PUBLIC' ||
+    userSetVis === 'PUBLIC' ||
+    effVis === 'VIDEO_EFFECTIVE_VISIBILITY_PUBLIC';
+
+  // 下書きや非公開・限定公開の文字列判定関数
+  const isPrivateOrDraftString = (val: unknown): boolean => {
+    if (typeof val !== 'string') return false;
+    const trimmed = val.trim();
+    const upper = trimmed.toUpperCase();
+
+    // DRAFT_STATUS_NONE は「下書きではない（＝公開・確定）」状態を表すため非公開と判定しない
+    if (upper === 'DRAFT_STATUS_NONE') {
+      return false;
+    }
+
+    if (
+      upper.includes('PRIVATE') ||
+      upper.includes('UNLISTED') ||
+      upper === 'DRAFT' ||
+      upper.startsWith('DRAFT_') ||
+      upper.endsWith('_DRAFT') ||
+      trimmed === '非公開' ||
+      trimmed === '限定公開' ||
+      trimmed === '下書き'
+    ) {
+      return true;
+    }
+
+    return false;
+  };
+
+  // もし明示的に公開（PUBLIC）であり、直接のフィールドに非公開/限定公開/下書き指定がなければ公開（false）とする
+  if (isExplicitlyPublic) {
+    const directPrivate =
+      isPrivateOrDraftString(item.privacy) ||
+      isPrivateOrDraftString(item.privacyStatus) ||
+      isPrivateOrDraftString(visObj.userSetVisibility) ||
+      isPrivateOrDraftString(visObj.effectiveVisibility);
+    if (!directPrivate) {
+      return false;
+    }
+  }
+
+  // 1. 直下文字列フィールドの判定
   const privacyFields = [
     item.privacy,
     item.privacyStatus,
@@ -66,18 +123,8 @@ export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
   ];
 
   for (const val of privacyFields) {
-    if (typeof val === 'string') {
-      const upper = val.toUpperCase();
-      if (
-        upper.includes('PRIVATE') ||
-        upper.includes('DRAFT') ||
-        upper.includes('UNLISTED') ||
-        val === '非公開' ||
-        val === '限定公開' ||
-        val === '下書き'
-      ) {
-        return true;
-      }
+    if (isPrivateOrDraftString(val)) {
+      return true;
     }
   }
 
@@ -85,16 +132,12 @@ export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
   if (item.status && typeof item.status === 'object') {
     const statusObj = item.status as Record<string, unknown>;
     const pStatus = statusObj.privacyStatus || statusObj.privacy || statusObj.status;
-    if (typeof pStatus === 'string') {
-      const upper = pStatus.toUpperCase();
-      if (upper.includes('PRIVATE') || upper.includes('DRAFT') || pStatus === '非公開') {
-        return true;
-      }
+    if (isPrivateOrDraftString(pStatus)) {
+      return true;
     }
   }
 
   if (item.visibility && typeof item.visibility === 'object') {
-    const visObj = item.visibility as Record<string, unknown>;
     const vStatusFields = [
       visObj.userSetVisibility,
       visObj.effectiveVisibility,
@@ -105,18 +148,8 @@ export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
     ];
 
     for (const vStatus of vStatusFields) {
-      if (typeof vStatus === 'string') {
-        const upper = vStatus.toUpperCase();
-        if (
-          upper.includes('PRIVATE') ||
-          upper.includes('DRAFT') ||
-          upper.includes('UNLISTED') ||
-          vStatus === '非公開' ||
-          vStatus === '限定公開' ||
-          vStatus === '下書き'
-        ) {
-          return true;
-        }
+      if (isPrivateOrDraftString(vStatus)) {
+        return true;
       }
     }
   }
