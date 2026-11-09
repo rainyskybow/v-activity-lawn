@@ -2,12 +2,25 @@ import { BulkActivityItem } from '../types';
 
 /**
  * X (旧Twitter) の UserOriginalsTimeline, UserRepliesTimeline, UserTweets, Likes レスポンスから過去アクティビティを抽出する純粋関数
+ * （※自分自身のポスト・返信・リポストのみを厳密に抽出します）
  * @param url リクエストURL
  * @param responseData GraphQLレスポンスオブジェクト
+ * @param targetUserId 対象ユーザーID（自分自身のID）
+ * @param targetScreenName 対象スクリーンネーム（自分自身のハンドル名）
  */
-export function extractXPassiveActivities(url: string, responseData: Record<string, unknown>): BulkActivityItem[] {
+export function extractXPassiveActivities(
+  url: string,
+  responseData: Record<string, unknown>,
+  targetUserId?: string,
+  targetScreenName?: string
+): BulkActivityItem[] {
   const results: BulkActivityItem[] = [];
   if (!responseData || typeof responseData !== 'object') {
+    return results;
+  }
+
+  // ホームタイムラインや検索等の無関係なエンドポイントは完全に拒否
+  if (url.includes('/HomeTimeline') || url.includes('/HomeLatestTimeline') || url.includes('/Search')) {
     return results;
   }
 
@@ -30,7 +43,7 @@ export function extractXPassiveActivities(url: string, responseData: Record<stri
     if (obj.tweet_results && typeof obj.tweet_results === 'object') {
       const res = (obj.tweet_results as { result?: Record<string, unknown> }).result;
       if (res) {
-        const item = parseSingleTweetResult(res, isLikesEndpoint);
+        const item = parseSingleTweetResult(res, isLikesEndpoint, targetUserId, targetScreenName);
         if (item && item.targetId && !seenIds.has(item.targetId)) {
           seenIds.add(item.targetId);
           results.push(item);
@@ -44,7 +57,7 @@ export function extractXPassiveActivities(url: string, responseData: Record<stri
         if (subItem && typeof subItem === 'object') {
           const itemContent = (subItem as { item?: { itemContent?: { tweet_results?: { result?: Record<string, unknown> } } } })?.item?.itemContent;
           if (itemContent?.tweet_results?.result) {
-            const parsed = parseSingleTweetResult(itemContent.tweet_results.result, isLikesEndpoint);
+            const parsed = parseSingleTweetResult(itemContent.tweet_results.result, isLikesEndpoint, targetUserId, targetScreenName);
             if (parsed && parsed.targetId && !seenIds.has(parsed.targetId)) {
               seenIds.add(parsed.targetId);
               results.push(parsed);
@@ -71,12 +84,57 @@ export function extractXPassiveActivities(url: string, responseData: Record<stri
   return results;
 }
 
-function parseSingleTweetResult(res: Record<string, unknown>, isLikesEndpoint: boolean): BulkActivityItem | null {
+/**
+ * 単体ツイートオブジェクトのパースと作者一致判定
+ */
+export function parseSingleTweetResult(
+  res: Record<string, unknown>,
+  isLikesEndpoint: boolean,
+  targetUserId?: string,
+  targetScreenName?: string
+): BulkActivityItem | null {
   const actualTweet = (res.tweet as Record<string, unknown>) || res;
   const tweetId = (actualTweet.rest_id as string) || (actualTweet.id_str as string);
   const legacy = (actualTweet.legacy as Record<string, unknown>) || actualTweet;
 
   if (!tweetId) return null;
+
+  // ツイート作成者情報の取得
+  const core = (actualTweet.core as Record<string, unknown>)?.user_results as Record<string, unknown> | undefined;
+  const userResult = (core?.result as Record<string, unknown>) || {};
+  const userLegacy = (userResult.legacy as Record<string, unknown>) || {};
+
+  const authorUserId =
+    (legacy.user_id_str as string) ||
+    (userResult.rest_id as string) ||
+    (actualTweet.user_id_str as string);
+
+  const authorScreenName =
+    (userLegacy.screen_name as string) ||
+    (userResult.screen_name as string);
+
+  // 【最重要】いいね一覧（Likes）以外では、自分自身のポストであるかを厳格に判定する
+  // 会話ツリーに紛れ込んだ他人の親ポストやリプライ相手を完全に除外
+  if (!isLikesEndpoint) {
+    let matchesAuthor = false;
+
+    if (targetUserId && authorUserId) {
+      if (authorUserId === targetUserId) {
+        matchesAuthor = true;
+      }
+    }
+
+    if (!matchesAuthor && targetScreenName && authorScreenName) {
+      if (authorScreenName.toLowerCase() === targetScreenName.toLowerCase()) {
+        matchesAuthor = true;
+      }
+    }
+
+    // targetUserId または targetScreenName が指定されている場合に不一致なら即時除外
+    if ((targetUserId || targetScreenName) && !matchesAuthor) {
+      return null;
+    }
+  }
 
   const text = (legacy.full_text as string) || (legacy.text as string) || '';
   const createdAtStr = legacy.created_at as string;

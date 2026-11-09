@@ -113,27 +113,41 @@ import { BulkActivityItem } from '../types';
   window.XMLHttpRequest = HookedXHR;
 
   /**
+   * 現在ログイン中のXユーザー情報（数値ユーザーIDおよびスクリーンネーム）を取得する
+   */
+  function getCurrentXUserInfo(): { userId: string | null; screenName: string | null } {
+    let userId: string | null = null;
+    let screenName: string | null = null;
+
+    try {
+      // 1. document.cookie 内の twid=u%3D[userId] からログインユーザー本人の数値IDを抽出
+      const twidMatch = document.cookie.match(/(?:^|;\s*)twid=(?:u%3D|u=)(\d+)/);
+      if (twidMatch && twidMatch[1]) {
+        userId = twidMatch[1];
+      }
+    } catch {}
+
+    try {
+      // 2. DOM の a[data-testid="AppTabBar_Profile_Link"] から本人のスクリーンネームを抽出
+      const profileLink = document.querySelector<HTMLAnchorElement>('a[data-testid="AppTabBar_Profile_Link"]');
+      if (profileLink) {
+        const href = profileLink.getAttribute('href') || '';
+        const handle = href.replace(/^\//, '').split('/')[0].split('?')[0];
+        if (handle && !['home', 'explore', 'notifications', 'messages', 'i'].includes(handle.toLowerCase())) {
+          screenName = handle;
+        }
+      }
+    } catch {}
+
+    return { userId, screenName };
+  }
+
+  /**
    * X の GraphQL 通信解析
    */
   function analyzeXResponse(url: string, reqBodyInput?: unknown, responseData?: Record<string, unknown>) {
     try {
       if (!responseData) return;
-
-      // 1. プロフィール画面・タイムライン閲覧・スクロール時の過去ログパッシブ自動検知
-      if (
-        url.includes('/UserOriginalsTimeline') ||
-        url.includes('/UserRepliesTimeline') ||
-        url.includes('/UserTweets') ||
-        url.includes('/UserTweetsAndReplies') ||
-        url.includes('/Likes') ||
-        url.includes('/HomeTimeline') ||
-        url.includes('/HomeLatestTimeline')
-      ) {
-        const pastItems = extractXPassiveActivities(url, responseData);
-        if (pastItems.length > 0) {
-          emitBulkActivities(pastItems);
-        }
-      }
 
       let reqBody: Record<string, unknown> = {};
       if (typeof reqBodyInput === 'string') {
@@ -145,6 +159,33 @@ import { BulkActivityItem } from '../types';
       }
 
       const variables = (reqBody.variables as Record<string, unknown>) || {};
+      const targetUserId = (variables.userId as string) || (variables.rest_id as string);
+
+      // 1. 自分自身のプロフィール画面閲覧・スクロール時の過去ログパッシブ自動検知
+      // 【最重要】/HomeTimeline や /HomeLatestTimeline（他人のポストが流れるホーム）は完全に除外
+      const isProfileTimeline =
+        url.includes('/UserOriginalsTimeline') ||
+        url.includes('/UserRepliesTimeline') ||
+        url.includes('/UserTweets') ||
+        url.includes('/UserTweetsAndReplies') ||
+        url.includes('/Likes');
+
+      if (isProfileTimeline) {
+        const userInfo = getCurrentXUserInfo();
+
+        // ログインユーザー本人のIDが判明しており、他人のプロフィールを閲覧している場合は吸い上げを行わない
+        if (userInfo.userId && targetUserId && targetUserId !== userInfo.userId) {
+          return;
+        }
+
+        const myUserId = userInfo.userId || targetUserId;
+        const myScreenName = userInfo.screenName || undefined;
+
+        const pastItems = extractXPassiveActivities(url, responseData, myUserId, myScreenName);
+        if (pastItems.length > 0) {
+          emitBulkActivities(pastItems);
+        }
+      }
 
       // 2. ツイート作成・リプライ (/CreateTweet)
       if (url.includes('/CreateTweet')) {

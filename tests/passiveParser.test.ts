@@ -369,5 +369,105 @@ describe('passiveParser', () => {
       expect(items[0].actionType).toBe('tweet_like');
       expect(items[0].targetId).toBe('liked-999');
     });
+
+    it('会話スレッド（VerticalConversation）において他人の親ツイートが除外され本人のポストのみ抽出されること', () => {
+      const mockUrl = 'https://x.com/i/api/graphql/xxx/UserRepliesTimeline';
+      const myUserId = '1756157928246255616';
+      const otherUserId = '1751084265851555840';
+
+      const mockResponse = {
+        data: {
+          user: {
+            result: {
+              timeline: {
+                timeline: {
+                  instructions: [
+                    {
+                      type: 'TimelineAddEntries',
+                      entries: [
+                        {
+                          entryId: 'conversation-thread-1',
+                          content: {
+                            entryType: 'TimelineTimelineModule',
+                            displayType: 'VerticalConversation',
+                            items: [
+                              // 1. 他人の親ポスト（除外されるべき）
+                              {
+                                item: {
+                                  itemContent: {
+                                    tweet_results: {
+                                      result: {
+                                        rest_id: 'other-parent-tweet',
+                                        legacy: {
+                                          user_id_str: otherUserId,
+                                          full_text: '日翠蓮歌さんの元ポストです',
+                                          created_at: 'Sun Nov 08 10:00:00 +0000 2026',
+                                        },
+                                      },
+                                    },
+                                  },
+                                },
+                              },
+                              // 2. 本人の返信ポスト（抽出されるべき）
+                              {
+                                item: {
+                                  itemContent: {
+                                    tweet_results: {
+                                      result: {
+                                        rest_id: 'my-reply-tweet',
+                                        legacy: {
+                                          user_id_str: myUserId,
+                                          full_text: '@hisui_renka_v 雨空ゆみの返信です！',
+                                          in_reply_to_status_id_str: 'other-parent-tweet',
+                                          created_at: 'Sun Nov 08 10:05:00 +0000 2026',
+                                        },
+                                      },
+                                    },
+                                  },
+                                },
+                              },
+                            ],
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      };
+
+      // 本人の userId を指定して抽出
+      const items = extractXPassiveActivities(mockUrl, mockResponse, myUserId);
+      expect(items.length).toBe(1);
+      expect(items[0].targetId).toBe('my-reply-tweet');
+      expect(items[0].actionType).toBe('tweet_reply');
+      expect(items[0].title).toBe('@hisui_renka_v 雨空ゆみの返信です！');
+    });
+
+    it('HomeTimelineなどの他人のタイムラインエンドポイントは完全に拒否されること', () => {
+      const mockHomeUrl = 'https://x.com/i/api/graphql/xxx/HomeTimeline';
+      const mockResponse = {
+        data: {
+          home: {
+            home_timeline_entry: {
+              itemContent: {
+                tweet_results: {
+                  result: {
+                    rest_id: 'stranger-tweet',
+                    legacy: { full_text: 'おすすめに流れてきた見知らぬ人のツイート' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const items = extractXPassiveActivities(mockHomeUrl, mockResponse);
+      expect(items).toEqual([]);
+    });
   });
 });
