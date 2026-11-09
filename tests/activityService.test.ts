@@ -67,4 +67,37 @@ describe('activityService bulkImportActivities', () => {
     expect(typeof all[0].timestamp).toBe('number');
     expect(!isNaN(all[0].timestamp)).toBe(true);
   });
+
+  it('複数日付のアクティビティを高速・安全にバッチ再計算できること', async () => {
+    const records: ActivityRecord[] = [
+      {
+        id: 'rec-day-1',
+        platform: 'youtube',
+        actionType: 'video_publish',
+        targetId: 'v-1',
+        title: '動画1',
+        score: 15,
+        timestamp: 1700000000000,
+        dateString: '2023-11-14',
+      },
+      {
+        id: 'rec-day-2',
+        platform: 'x',
+        actionType: 'tweet_post',
+        targetId: 't-1',
+        title: 'ポスト1',
+        score: 2,
+        timestamp: 1700100000000,
+        dateString: '2023-11-15',
+      },
+    ];
+
+    const count = await bulkImportActivities(records);
+    expect(count).toBe(2);
+
+    const summaries = await db.daily_summaries.toArray();
+    expect(summaries.length).toBe(2);
+    expect(summaries.find((s) => s.date === '2023-11-14')?.totalScore).toBe(15);
+    expect(summaries.find((s) => s.date === '2023-11-15')?.totalScore).toBe(2);
+  });
 });

@@ -54,16 +54,22 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create('DAILY_MAINTENANCE_ALARM', {
     periodInMinutes: 60,
   });
-  updateBadge();
-  syncYouTubeRssInBackground();
+  updateBadge().catch(() => {});
+  syncYouTubeRssInBackground().catch(() => {});
 });
 
 // 定期アラームの受信
-chrome.alarms.onAlarm.addListener(async (alarm) => {
+chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'DAILY_MAINTENANCE_ALARM') {
-    await syncYouTubeRssInBackground();
-    await refreshStreaks();
-    await updateBadge();
+    (async () => {
+      try {
+        await syncYouTubeRssInBackground();
+        await refreshStreaks();
+        await updateBadge();
+      } catch (err) {
+        console.warn('[v-activity-lawn] Alarm maintenance error:', err);
+      }
+    })().catch(() => {});
   }
 });
 
@@ -84,10 +90,14 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         await updateBadge();
         sendResponse({ success: true, record });
       } catch (err) {
-        console.error('[v-activity-lawn] Failed to record activity:', err);
-        sendResponse({ success: false, error: String(err) });
+        const errorDetail = err instanceof Error ? (err.stack || err.message) : (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        console.error('[v-activity-lawn] Failed to record activity:', errorDetail);
+        sendResponse({ success: false, error: errorDetail });
       }
-    })();
+    })().catch((err) => {
+      console.error('[v-activity-lawn] Uncaught in RECORD_ACTIVITY:', err);
+      sendResponse({ success: false, error: String(err) });
+    });
     return true;
   }
 
@@ -129,7 +139,10 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         console.error('[v-activity-lawn] Failed to record bulk activities:', errorDetail);
         sendResponse({ success: false, error: errorDetail });
       }
-    })();
+    })().catch((err) => {
+      console.error('[v-activity-lawn] Uncaught in RECORD_BULK_ACTIVITIES:', err);
+      sendResponse({ success: false, error: String(err) });
+    });
     return true;
   }
 });
