@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>v-activity-lawn - 活動詳細ダッシュボード</title>
+  <link rel="stylesheet" href="../styles/main.css">
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen font-sans selection:bg-green-500 selection:text-white">
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    
+    <!-- トップナビゲーション -->
+    <header class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-6 mb-8">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-green-600 flex items-center justify-center text-white text-lg font-black shadow-sm">
+          V
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">v-activity-lawn</h1>
+          <p class="text-xs text-gray-500 dark:text-gray-400">VTuber・クリエイター向け活動可視化ダッシュボード</p>
+        </div>
+      </div>
+
+      <!-- 右側アクションコントロール -->
+      <div class="flex items-center space-x-3">
+        <!-- ダークモード切り替えボタン -->
+        <button id="btn-toggle-dark" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+          外観モード切替
+        </button>
+        <!-- SNS共有画像エクスポートボタン -->
+        <button id="btn-export-card" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-green-600 hover:bg-green-700 text-white shadow-sm transition">
+          SNS共有画像を保存
+        </button>
+      </div>
+    </header>
+
+    <!-- 統計サマリーカード群 -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div class="text-xs font-medium text-gray-500 dark:text-gray-400">年間合計スコア</div>
+        <div class="mt-1 flex items-baseline space-x-1">
+          <span id="stat-total-score" class="text-2xl font-black text-green-600 dark:text-green-400">0</span>
+          <span class="text-xs text-gray-400">pt</span>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div class="text-xs font-medium text-gray-500 dark:text-gray-400">現在の継続日数 (Streak)</div>
+        <div class="mt-1 flex items-baseline space-x-1">
+          <span id="stat-current-streak" class="text-2xl font-black text-amber-500">0</span>
+          <span class="text-xs text-gray-400">日連続</span>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div class="text-xs font-medium text-gray-500 dark:text-gray-400">年間総配信時間</div>
+        <div class="mt-1 flex items-baseline space-x-1">
+          <span id="stat-stream-hours" class="text-2xl font-black text-purple-600 dark:text-purple-400">0</span>
+          <span class="text-xs text-gray-400">時間</span>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div class="text-xs font-medium text-gray-500 dark:text-gray-400">年間公開動画数 (長尺/Shorts)</div>
+        <div class="mt-1 flex items-baseline space-x-1">
+          <span id="stat-video-count" class="text-2xl font-black text-red-500">0</span>
+          <span class="text-xs text-gray-400">本</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 年間コントリビューショングラフセクション -->
+    <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm mb-8">
+      
+      <!-- グラフ上部ヘッダー（年度タイトル・前年翌年ナビ・GitHub風年選択ボタン） -->
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
+        
+        <!-- 左側：選択中年度タイトルと送りボタン -->
+        <div class="flex items-center space-x-3">
+          <h2 class="text-base font-bold text-gray-900 dark:text-white flex items-center space-x-2">
+            <span id="label-selected-year" class="text-green-600 dark:text-green-400">直近1年間</span>
+            <span>の活動草</span>
+          </h2>
+          <div class="flex items-center space-x-1">
+            <button id="btn-prev-year" class="p-1 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition" title="前年へ">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <button id="btn-next-year" class="p-1 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition" title="翌年へ">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 右側：GitHub風 年度選択ボタン一覧 -->
+        <div class="flex items-center space-x-1.5 overflow-x-auto py-1" id="year-selector-container">
+          <!-- JSで動的にボタン生成: [直近1年] [2026] [2025] ... -->
+        </div>
+
+      </div>
+
+      <!-- グラフ上部フィルタ・テーマコントロールバー -->
+      <div class="flex flex-wrap items-center justify-between gap-4 pb-2 mb-4">
+        
+        <!-- フィルタ切り替えタブ -->
+        <div class="flex items-center space-x-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg text-xs font-semibold">
+          <button data-filter="all" class="filter-btn active-filter px-3 py-1.5 rounded-md transition">総合稼働草</button>
+          <button data-filter="works" class="filter-btn px-3 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">動画・配信のみ</button>
+          <button data-filter="interactions" class="filter-btn px-3 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">YouTube投稿のみ</button>
+          <button data-filter="youtube" class="filter-btn px-3 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">YouTube</button>
+          <button data-filter="x" class="filter-btn px-3 py-1.5 rounded-md transition text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">X</button>
+        </div>
+
+        <!-- 推し色・メンバーカラーテーマ選択 -->
+        <div class="flex items-center space-x-2 text-xs">
+          <span class="text-gray-500 dark:text-gray-400 font-medium">推し色テーマ:</span>
+          <select id="select-theme" class="bg-gray-50 dark:bg-gray-750 border border-gray-300 dark:border-gray-600 rounded-lg px-2.5 py-1 text-xs font-semibold">
+            <option value="green">GitHubグリーン</option>
+            <option value="pink">サクラピンク</option>
+            <option value="cyan">シアンブルー</option>
+            <option value="purple">ロイヤルパープル</option>
+            <option value="red">クリムゾンレッド</option>
+            <option value="yellow">サンシャインイエロー</option>
+          </select>
+        </div>
+
+      </div>
+
+      <!-- 年間53週 草グラフ描画領域 -->
+      <div class="overflow-x-auto py-2">
+        <div id="annual-lawn-container" class="min-w-[760px]"></div>
+      </div>
+
+      <!-- グラフフッター凡例 -->
+      <div class="flex flex-wrap items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-4 pt-3 border-t border-gray-100 dark:border-gray-750">
+        <div class="flex items-center space-x-2">
+          <span>少</span>
+          <div class="flex items-center space-x-1" id="legend-levels"></div>
+          <span>多</span>
+          <div class="ml-4 flex items-center space-x-1.5">
+            <span class="inline-block w-2.5 h-2.5 rounded-sm border border-amber-500 bg-amber-50 dark:bg-amber-950"></span>
+            <span>枠線: 動画公開または配信実施マイルストーン</span>
+          </div>
+        </div>
+        <div>
+          <span>セルをクリックするとその日の詳細タイムラインを表示します</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ドリルダウンタイムライン領域（マス目クリック時に展開） -->
+    <section id="timeline-section" class="mb-8 hidden"></section>
+
+    <!-- 過去ログ安全自動収集（垢BANリスクゼロ）のご案内 -->
+    <section class="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl p-5 mb-8">
+      <div class="flex items-start space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+          INFO
+        </div>
+        <div class="text-xs space-y-1">
+          <h3 class="font-bold text-blue-900 dark:text-blue-200 text-sm">垢BANリスクゼロの過去ログ自動吸い上げ機能（パッシブ自動検知）</h3>
+          <p class="text-blue-800 dark:text-blue-300">
+            本拡張機能は、アカウント凍結（垢BAN）やレートリミットを防止するため、外部への機械的な自動巡回を行いません。
+            代わりに、<strong>YouTube Studioの「コンテンツ」一覧</strong>や、<strong>Xの「ご自身のプロフィール画面」</strong>を開いてスクロールするだけで、画面に読み込まれた過去の動画・配信・ポスト・返信・いいねが<strong>自動的かつ安全にIndexedDBへ蓄積</strong>されます。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 過去データ同期・エクスポート設定セクション -->
+    <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      
+      <!-- YouTube RSS即時・定期自動同期カード -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">YouTube 公開RSS同期</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            チャンネルIDを入力して保存すると、直近公開された動画（最大15件）を即座に反映し、以降1時間ごとに完全自動同期します。
+          </p>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <input id="input-channel-id" type="text" placeholder="チャンネルID (例: UC...)" class="flex-1 min-w-0 bg-gray-50 dark:bg-gray-750 border border-gray-300 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-green-500">
+            <button id="btn-sync-rss" class="px-2.5 py-1.5 text-xs font-bold bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:opacity-90 transition whitespace-nowrap">
+              保存・同期
+            </button>
+          </div>
+          <div id="rss-sync-status" class="text-xs mt-2 text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- YouTube データ取込カード（Google Takeout / Studio CSV） -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">YouTube データ取込</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            Google Takeout（ZIP）またはYouTube Studioからエクスポートした動画・投稿CSVを読み込み、過去全期間の活動を一撃で反映します。
+          </p>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <input id="input-youtube-archive" type="file" accept=".zip,.csv,.json" class="text-xs file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 cursor-pointer w-full">
+          </div>
+          <div id="yt-import-status" class="text-xs mt-2 text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- Xデータアーカイブインポートカード -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">X データアーカイブ取込</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            X公式からダウンロードしたアーカイブファイル（ZIPまたはtweets.js/like.js）をローカルで読み込み、過去全期間の草を生成します。
+          </p>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <input id="input-x-archive" type="file" accept=".zip,.js,.json" class="text-xs file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 cursor-pointer w-full">
+          </div>
+          <div id="x-import-status" class="text-xs mt-2 text-gray-500"></div>
+        </div>
+      </div>
+
+      <!-- データバックアップ・復元カード（全アクティビティ・設定のJSON出力＆復元） -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-5 border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-gray-900 dark:text-white mb-2">データバックアップ・復元</h3>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            蓄積された活動データと設定をJSON形式で保存・復元します。別PCへの移行や定期バックアップに最適です。
+          </p>
+        </div>
+        <div class="space-y-3">
+          <button id="btn-export-backup" class="w-full px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:opacity-90 transition text-center shadow-sm">
+            JSONバックアップを出力
+          </button>
+          <div>
+            <label class="block text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1">バックアップファイルを復元:</label>
+            <input id="input-import-backup" type="file" accept=".json" class="text-xs file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-200 hover:file:bg-gray-200 cursor-pointer w-full">
+          </div>
+          <div id="backup-status" class="text-xs text-gray-500 min-h-[1rem]"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- フッター -->
+    <footer class="text-center text-xs text-gray-400 py-6 border-t border-gray-200 dark:border-gray-800">
+      v-activity-lawn | 完全ローカル・アカウントBANリスクゼロのVTuber活動草拡張機能
+    </footer>
+
+  </div>
+
+  <script type="module" src="./dashboard.ts"></script>
+</body>
+</html>

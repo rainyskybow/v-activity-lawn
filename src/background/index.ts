@@ -1,0 +1,190 @@
+import {
+  addActivity,
+  bulkImportActivities,
+  getTodaySummary,
+  refreshStreaks,
+  removeActivitiesByTargetIds,
+  cleanInvalidTestActivities,
+} from '../storage/activityService';
+import { getSettings } from '../storage/settingsService';
+import { fetchYouTubeChannelRss } from '../sync/youtubeRss';
+import { RuntimeMessage, ActivityRecord } from '../types';
+import { formatDateString } from '../utils/dateUtils';
+import { calculateBaseScore } from '../score/scoringEngine';
+
+/**
+ * バックグラウンド Service Worker
+ * メッセージ受信によるアクティビティ保存、バッジ更新、YouTube RSS定期自動同期を管理
+ */
+
+/**
+ * アイコンのバッジテキストを更新する
+ */
+async function updateBadge() {
+  try {
+    const todaySummary = await getTodaySummary();
+    const score = todaySummary.totalScore;
+    if (score > 0) {
+      chrome.action.setBadgeText({ text: `${Math.round(score)}` });
+      chrome.action.setBadgeBackgroundColor({ color: '#216e39' });
+    } else {
+      chrome.action.setBadgeText({ text: '' });
+    }
+  } catch (err) {
+    console.warn('[v-activity-lawn] Failed to update badge:', err);
+  }
+}
+
+/**
+ * YouTube公開RSSフィードのバックグラウンド自動同期処理
+ */
+async function syncYouTubeRssInBackground() {
+  try {
+    const settings = await getSettings();
+    if (!settings.youtubeChannelId) return;
+
+    console.log('[v-activity-lawn] Background RSS sync started for channel:', settings.youtubeChannelId);
+    const records = await fetchYouTubeChannelRss(settings.youtubeChannelId);
+    if (records.length > 0) {
+      const count = await bulkImportActivities(records);
+      console.log(`[v-activity-lawn] Background RSS sync completed: ${count} activities updated.`);
+    }
+  } catch (err) {
+    console.warn('[v-activity-lawn] Background RSS sync failed:', err);
+  }
+}
+
+// 拡張機能インストール・更新時の初期化
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[v-activity-lawn] Extension installed/updated.');
+  // 過去に誤登録された非公開テスト配信等のクリーンアップ
+  cleanInvalidTestActivities().then((cnt) => {
+    if (cnt > 0) {
+      console.log(`[v-activity-lawn] Cleaned up ${cnt} invalid test activities.`);
+      updateBadge().catch(() => {});
+    }
+  }).catch(() => {});
+
+  // 60分ごとの定期日次メンテナンスおよびRSS自動取得アラームを設定
+  chrome.alarms.create('DAILY_MAINTENANCE_ALARM', {
+    periodInMinutes: 60,
+  });
+  updateBadge().catch(() => {});
+  syncYouTubeRssInBackground().catch(() => {});
+});
+
+// 定期アラームの受信
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'DAILY_MAINTENANCE_ALARM') {
+    (async () => {
+      try {
+        await syncYouTubeRssInBackground();
+        await refreshStreaks();
+        await updateBadge();
+      } catch (err) {
+        console.warn('[v-activity-lawn] Alarm maintenance error:', err);
+      }
+    })().catch(() => {});
+  }
+});
+
+// コンテンツスクリプトやUIからのメッセージ受信
+chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
+  if (message.type === 'RECORD_ACTIVITY') {
+    (async () => {
+      try {
+        const record = await addActivity({
+          platform: message.platform,
+          actionType: message.actionType,
+          targetId: message.targetId,
+          title: message.title,
+          durationMinutes: message.durationMinutes,
+          timestamp: message.timestamp,
+        });
+
+        await updateBadge();
+        sendResponse({ success: true, record });
+      } catch (err) {
+        const errorDetail = err instanceof Error ? (err.stack || err.message) : (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        console.error('[v-activity-lawn] Failed to record activity:', errorDetail);
+        sendResponse({ success: false, error: errorDetail });
+      }
+    })().catch((err) => {
+      console.error('[v-activity-lawn] Uncaught in RECORD_ACTIVITY:', err);
+      sendResponse({ success: false, error: String(err) });
+    });
+    return true;
+  }
+
+  // スクロール時などのパッシブ一括アクティビティ記録
+  if (message.type === 'RECORD_BULK_ACTIVITIES') {
+    (async () => {
+      try {
+        if (!message.items || !Array.isArray(message.items) || message.items.length === 0) {
+          sendResponse({ success: true, count: 0 });
+          return;
+        }
+
+        const settings = await getSettings();
+        const records: ActivityRecord[] = message.items.map((item) => {
+          const rawTs = Number(item.timestamp);
+          const safeTs = !isNaN(rawTs) && rawTs > 0 ? rawTs : Date.now();
+          const score = calculateBaseScore(item.actionType, item.durationMinutes, settings.customWeights);
+          const dateString = formatDateString(safeTs);
+          const targetId = item.targetId || `bulk-${safeTs}-${Math.random().toString(36).substring(2, 7)}`;
+
+          return {
+            id: `${item.platform}-${targetId}`,
+            platform: item.platform,
+            actionType: item.actionType,
+            targetId,
+            title: item.title || '',
+            durationMinutes: item.durationMinutes,
+            score: isNaN(score) ? 0 : score,
+            timestamp: safeTs,
+            dateString,
+          };
+        });
+
+        const count = await bulkImportActivities(records);
+        await updateBadge();
+        sendResponse({ success: true, count });
+      } catch (err) {
+        const errorDetail = err instanceof Error ? (err.stack || err.message) : (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        console.error('[v-activity-lawn] Failed to record bulk activities:', errorDetail);
+        sendResponse({ success: false, error: errorDetail });
+      }
+    })().catch((err) => {
+      console.error('[v-activity-lawn] Uncaught in RECORD_BULK_ACTIVITIES:', err);
+      sendResponse({ success: false, error: String(err) });
+    });
+    return true;
+  }
+
+  // 非公開動画等の除外メッセージ処理
+  if (message.type === 'REMOVE_ACTIVITIES') {
+    (async () => {
+      try {
+        if (!message.targetIds || !Array.isArray(message.targetIds) || message.targetIds.length === 0) {
+          sendResponse({ success: true, removedCount: 0 });
+          return;
+        }
+
+        const removedCount = await removeActivitiesByTargetIds(message.targetIds, message.platform);
+        if (removedCount > 0) {
+          await updateBadge();
+          console.log(`[v-activity-lawn] Removed ${removedCount} private/deleted activities.`);
+        }
+        sendResponse({ success: true, removedCount });
+      } catch (err) {
+        const errorDetail = err instanceof Error ? (err.stack || err.message) : (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        console.error('[v-activity-lawn] Failed to remove activities:', errorDetail);
+        sendResponse({ success: false, error: errorDetail });
+      }
+    })().catch((err) => {
+      console.error('[v-activity-lawn] Uncaught in REMOVE_ACTIVITIES:', err);
+      sendResponse({ success: false, error: String(err) });
+    });
+    return true;
+  }
+});

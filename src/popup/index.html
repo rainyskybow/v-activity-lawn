@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>v-activity-lawn</title>
+  <link rel="stylesheet" href="../styles/main.css">
+</head>
+<body class="w-[380px] bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-4 font-sans select-none">
+  <!-- ヘッダー -->
+  <header class="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-3 mb-3">
+    <div class="flex items-center space-x-2">
+      <div class="w-6 h-6 rounded bg-green-600 flex items-center justify-center text-white text-xs font-bold">V</div>
+      <h1 class="text-base font-bold text-gray-900 dark:text-white">v-activity-lawn</h1>
+    </div>
+    <div id="streak-badge" class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 font-semibold">
+      継続 0日
+    </div>
+  </header>
+
+  <!-- 本日の活動サマリーカード -->
+  <section class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-3.5 mb-3">
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="text-xs text-gray-500 dark:text-gray-400">本日の活動スコア</div>
+        <div class="flex items-baseline space-x-2 mt-0.5">
+          <span id="today-score" class="text-2xl font-black text-gray-900 dark:text-white">0</span>
+          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">pt</span>
+        </div>
+      </div>
+      <div id="today-level-badge" class="px-2.5 py-1 text-xs font-bold rounded-md bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+        Level 0 (オフ日)
+      </div>
+    </div>
+  </section>
+
+  <!-- 直近4週間のミニ草 -->
+  <section class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-3.5 mb-3">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-xs font-bold text-gray-700 dark:text-gray-300">直近4週間の活動草</h2>
+      <span class="text-[10px] text-gray-400">28日間</span>
+    </div>
+    <div id="mini-lawn-container" class="w-full flex justify-center py-1"></div>
+  </section>
+
+  <!-- 本日の内訳 -->
+  <section class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-3.5 mb-4">
+    <h2 class="text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">本日のアクション内訳</h2>
+    <div class="grid grid-cols-2 gap-2 text-xs">
+      <div class="p-2 rounded bg-gray-50 dark:bg-gray-750 flex justify-between items-center">
+        <span class="text-gray-600 dark:text-gray-400">長尺動画公開</span>
+        <span id="count-videos" class="font-bold">0 本</span>
+      </div>
+      <div class="p-2 rounded bg-gray-50 dark:bg-gray-750 flex justify-between items-center">
+        <span class="text-gray-600 dark:text-gray-400">ライブ配信</span>
+        <span id="count-streams" class="font-bold">0 回</span>
+      </div>
+      <div class="p-2 rounded bg-gray-50 dark:bg-gray-750 flex justify-between items-center">
+        <span class="text-gray-600 dark:text-gray-400">Shorts公開</span>
+        <span id="count-shorts" class="font-bold">0 本</span>
+      </div>
+      <div class="p-2 rounded bg-gray-50 dark:bg-gray-750 flex justify-between items-center">
+        <span class="text-gray-600 dark:text-gray-400">Xポスト/RT</span>
+        <span id="count-tweets" class="font-bold">0 件</span>
+      </div>
+      <div class="p-2 rounded bg-gray-50 dark:bg-gray-750 flex justify-between items-center">
+        <span class="text-gray-600 dark:text-gray-400">ファン返信</span>
+        <span id="count-replies" class="font-bold">0 件</span>
+      </div>
+      <div class="p-2 rounded bg-gray-50 dark:bg-gray-750 flex justify-between items-center">
+        <span class="text-gray-600 dark:text-gray-400">ハート/いいね</span>
+        <span id="count-hearts" class="font-bold">0 件</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ダッシュボードリンク -->
+  <button id="btn-open-dashboard" class="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center justify-center space-x-1">
+    <span>年間詳細ダッシュボードを開く</span>
+  </button>
+
+  <script type="module" src="./popup.ts"></script>
+</body>
+</html>
