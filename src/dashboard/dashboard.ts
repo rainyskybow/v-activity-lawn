@@ -14,6 +14,7 @@ import { exportShareCardImage } from '../components/shareCard';
 import { fetchYouTubeChannelRss } from '../sync/youtubeRss';
 import { parseUploadedYouTubeArchive } from '../sync/youtubeArchive';
 import { parseUploadedXArchive } from '../sync/xArchive';
+import { exportBackupData, importBackupData } from '../storage/backupService';
 import { generatePast53WeeksGrid, generateYearGrid, formatDateString } from '../utils/dateUtils';
 import { ThemeColorName, ViewFilterType, DailySummary } from '../types';
 
@@ -408,6 +409,52 @@ function setupEventListeners() {
       } catch (err) {
         xStatus.textContent = `取込エラー: ${String(err)}`;
         xStatus.className = 'text-xs mt-2 text-red-500';
+      }
+    });
+  }
+
+  // JSONバックアップのエクスポート
+  const btnExportBackup = document.getElementById('btn-export-backup');
+  const backupStatus = document.getElementById('backup-status');
+
+  if (btnExportBackup && backupStatus) {
+    btnExportBackup.addEventListener('click', async () => {
+      backupStatus.textContent = 'バックアップ生成中...';
+      backupStatus.className = 'text-xs text-gray-500';
+
+      try {
+        const { count, filename } = await exportBackupData();
+        backupStatus.textContent = `エクスポート完了: ${count} 件のアクティビティを ${filename} に保存しました。`;
+        backupStatus.className = 'text-xs text-green-600 dark:text-green-400';
+      } catch (err) {
+        backupStatus.textContent = `出力エラー: ${String(err)}`;
+        backupStatus.className = 'text-xs text-red-500';
+      }
+    });
+  }
+
+  // JSONバックアップのインポート（復元）
+  const inputImportBackup = document.getElementById('input-import-backup') as HTMLInputElement | null;
+
+  if (inputImportBackup && backupStatus) {
+    inputImportBackup.addEventListener('change', async () => {
+      const files = inputImportBackup.files;
+      if (!files || files.length === 0) return;
+
+      const file = files[0];
+      backupStatus.textContent = 'バックアップ復元中...';
+      backupStatus.className = 'text-xs text-gray-500';
+
+      try {
+        const { count, hasSettings } = await importBackupData(file);
+        const settingsMsg = hasSettings ? '（設定も復元しました）' : '';
+        backupStatus.textContent = `復元完了: ${count} 件のアクティビティを復元しました。${settingsMsg}`;
+        backupStatus.className = 'text-xs text-green-600 dark:text-green-400';
+        inputImportBackup.value = '';
+        await loadData();
+      } catch (err) {
+        backupStatus.textContent = `復元エラー: ${String(err)}`;
+        backupStatus.className = 'text-xs text-red-500';
       }
     });
   }
