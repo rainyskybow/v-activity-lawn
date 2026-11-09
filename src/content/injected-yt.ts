@@ -1,4 +1,4 @@
-import { extractYouTubePassiveActivities } from '../sync/youtubePassiveParser';
+import { extractYouTubePassiveActivities, extractYouTubePrivateTargetIds } from '../sync/youtubePassiveParser';
 import { BulkActivityItem } from '../types';
 
 /**
@@ -44,6 +44,26 @@ import { BulkActivityItem } from '../types';
           platform: 'youtube',
           isBulk: true,
           bulkItems: items,
+        },
+        '*'
+      );
+    } catch {
+      // 例外は握りつぶす
+    }
+  }
+
+  /**
+   * 非公開に変更された動画・除外対象IDを postMessage で通知
+   */
+  function emitRemoveActivities(targetIds: string[]) {
+    if (targetIds.length === 0) return;
+    try {
+      window.postMessage(
+        {
+          source: 'v-activity-lawn-injected',
+          platform: 'youtube',
+          isRemove: true,
+          removeTargetIds: targetIds,
         },
         '*'
       );
@@ -139,6 +159,10 @@ import { BulkActivityItem } from '../types';
         if (pastItems.length > 0) {
           emitBulkActivities(pastItems);
         }
+        const privateTargetIds = extractYouTubePrivateTargetIds(responseData);
+        if (privateTargetIds.length > 0) {
+          emitRemoveActivities(privateTargetIds);
+        }
       }
 
       // 2. 動画・Shorts公開 / メタデータ更新
@@ -157,6 +181,11 @@ import { BulkActivityItem } from '../types';
             emitActivity('shorts_publish', { targetId: videoId, title: title || 'ショート動画' });
           } else {
             emitActivity('video_publish', { targetId: videoId, title: title || '通常動画' });
+          }
+        } else if (privacy === 'PRIVATE' || responseData.privacyStatus === 'PRIVATE') {
+          // 非公開に変更された場合は草（アクティビティ）から除外
+          if (videoId) {
+            emitRemoveActivities([videoId]);
           }
         } else {
           emitActivity('metadata_update', { targetId: videoId, title });

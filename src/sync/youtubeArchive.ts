@@ -101,6 +101,12 @@ export function parseStudioTableCsv(csvText: string): ActivityRecord[] {
   const titleIndex = header.findIndex((h) => h === '動画' || h.includes('title') || h === 'content');
   const publishTimeIndex = header.findIndex((h) => h.includes('公開日') || h.includes('publish time') || h.includes('date'));
   const durationIndex = header.findIndex((h) => h === '長さ' || h.includes('duration'));
+  const privacyIndex = header.findIndex(
+    (h) =>
+      !h.includes('公開日') &&
+      !h.includes('publish time') &&
+      (h.includes('公開') || h.includes('visibility') || h.includes('privacy') || h.includes('状態') || h.includes('status'))
+  );
 
   if (videoIdIndex === -1 && publishTimeIndex === -1) {
     return [];
@@ -114,6 +120,14 @@ export function parseStudioTableCsv(csvText: string): ActivityRecord[] {
 
     const videoId = videoIdIndex !== -1 ? row[videoIdIndex] : `studio-csv-${r}`;
     if (!videoId || videoId === '合計' || videoId === 'Total') continue;
+
+    // 非公開（PRIVATE / 非公開）の動画は除外
+    if (privacyIndex !== -1 && row[privacyIndex]) {
+      const priv = row[privacyIndex].trim().toLowerCase();
+      if (priv === '非公開' || priv === 'private') {
+        continue;
+      }
+    }
 
     const title = titleIndex !== -1 ? row[titleIndex] : '動画';
     const dateStr = publishTimeIndex !== -1 ? row[publishTimeIndex] : '';
@@ -242,6 +256,16 @@ export async function parseUploadedYouTubeArchive(file: File): Promise<ActivityR
           if (data && (data.videoId || data.id) && (data.title || data.snippet?.title)) {
             const vId = (data.videoId as string) || (data.id as string);
             const title = (data.title as string) || (data.snippet?.title as string) || '動画';
+
+            // 非公開動画は除外
+            const privacy = data.privacy || data.status?.privacyStatus || data.snippet?.privacyStatus || data.visibility;
+            if (typeof privacy === 'string') {
+              const pLower = privacy.toLowerCase();
+              if (pLower === 'private' || pLower === '非公開') {
+                continue;
+              }
+            }
+
             const uploadTime = data.uploadDate || data.publishedAt || data.snippet?.publishedAt;
             const timestamp = parseDateToTimestamp(uploadTime);
             const isShorts = Boolean(/#shorts/i.test(title));

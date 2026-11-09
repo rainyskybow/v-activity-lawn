@@ -50,7 +50,107 @@ function extractText(obj: unknown): string {
 }
 
 /**
+ * YouTube の動画/投稿アイテムが非公開（PRIVATE）かどうかを判定する
+ */
+export function isYouTubeItemPrivate(item: Record<string, unknown>): boolean {
+  if (!item || typeof item !== 'object') return false;
+
+  // 1. 直下文字列フィールドの判定
+  const privacyFields = [
+    item.privacy,
+    item.privacyStatus,
+    item.visibility,
+    item.privacyState,
+    item.visibilityStatus,
+  ];
+
+  for (const val of privacyFields) {
+    if (typeof val === 'string') {
+      const upper = val.toUpperCase();
+      if (
+        upper === 'PRIVATE' ||
+        upper === 'PRIVACY_STATUS_PRIVATE' ||
+        upper === 'PRIVACY_PRIVATE' ||
+        val === '非公開'
+      ) {
+        return true;
+      }
+    }
+  }
+
+  // 2. ネストオブジェクト（status や visibility）の判定
+  if (item.status && typeof item.status === 'object') {
+    const statusObj = item.status as Record<string, unknown>;
+    const pStatus = statusObj.privacyStatus || statusObj.privacy;
+    if (typeof pStatus === 'string') {
+      const upper = pStatus.toUpperCase();
+      if (
+        upper === 'PRIVATE' ||
+        upper === 'PRIVACY_STATUS_PRIVATE' ||
+        upper === 'PRIVACY_PRIVATE' ||
+        pStatus === '非公開'
+      ) {
+        return true;
+      }
+    }
+  }
+
+  if (item.visibility && typeof item.visibility === 'object') {
+    const visObj = item.visibility as Record<string, unknown>;
+    const vStatus = visObj.privacyStatus || visObj.privacy || visObj.type;
+    if (typeof vStatus === 'string') {
+      const upper = vStatus.toUpperCase();
+      if (
+        upper === 'PRIVATE' ||
+        upper === 'PRIVACY_STATUS_PRIVATE' ||
+        upper === 'PRIVACY_PRIVATE' ||
+        vStatus === '非公開'
+      ) {
+        return true;
+      }
+    }
+  }
+
+  // 3. badges や label の検査
+  if (Array.isArray(item.badges)) {
+    const badgesStr = JSON.stringify(item.badges);
+    if (badgesStr.includes('非公開') || /"PRIVATE"/i.test(badgesStr)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * YouTube Studio レスポンスから非公開（PRIVATE）の動画IDを抽出する
+ */
+export function extractYouTubePrivateTargetIds(responseData: Record<string, unknown>): string[] {
+  const privateIds: string[] = [];
+  if (!responseData || typeof responseData !== 'object') return privateIds;
+
+  const seen = new Set<string>();
+
+  // Studio の videos 配列
+  if (Array.isArray(responseData.videos)) {
+    for (const v of responseData.videos) {
+      if (v && typeof v === 'object') {
+        const vObj = v as Record<string, unknown>;
+        const videoId = vObj.videoId as string;
+        if (videoId && isYouTubeItemPrivate(vObj) && !seen.has(videoId)) {
+          seen.add(videoId);
+          privateIds.push(videoId);
+        }
+      }
+    }
+  }
+
+  return privateIds;
+}
+
+/**
  * YouTube Studio / YouTube のレスポンスから過去動画・配信・Shortsおよび「コンテンツタブ投稿」を安全に抽出する純粋関数
+ * （※非公開動画は自動的に除外されます）
  * @param responseData APIレスポンスオブジェクト
  * @param url リクエストURL（任意）
  */
@@ -176,6 +276,11 @@ function parseCreatorVideoItem(v: Record<string, unknown>): BulkActivityItem | n
   const videoId = v.videoId as string;
   if (!videoId) return null;
 
+  // 【最重要】非公開（PRIVATE）の動画は除外する
+  if (isYouTubeItemPrivate(v)) {
+    return null;
+  }
+
   const title = (v.title as string) || '動画';
   const timePublishedSec = v.timePublishedSeconds || v.timeCreatedSeconds;
   let timestamp = Date.now();
@@ -222,6 +327,17 @@ function parseCreatorPostItem(p: Record<string, unknown>): BulkActivityItem | nu
   const postId = p.postId as string;
   if (!postId) return null;
 
+  // 下書きや非公開の投稿は除外
+  if (p.publishingStatus && typeof p.publishingStatus === 'string') {
+    const upper = p.publishingStatus.toUpperCase();
+    if (upper.includes('DRAFT') || upper.includes('PRIVATE')) {
+      return null;
+    }
+  }
+  if (isYouTubeItemPrivate(p)) {
+    return null;
+  }
+
   const contentText = extractText(p.contentText) || 'コミュニティ投稿';
   const publishTimeSec = p.publishTime || p.lastUpdateTimeSec;
   let timestamp = Date.now();
@@ -262,6 +378,11 @@ function parseCreatorPostItem(p: Record<string, unknown>): BulkActivityItem | nu
 function parseSingleVideoRenderer(r: Record<string, unknown>): BulkActivityItem | null {
   const videoId = (r.videoId as string) || (r.encryptedVideoId as string);
   if (!videoId) return null;
+
+  // 【最重要】非公開の動画は除外する
+  if (isYouTubeItemPrivate(r)) {
+    return null;
+  }
 
   const title = extractText(r.title) || extractText(r.headline) || '動画';
 

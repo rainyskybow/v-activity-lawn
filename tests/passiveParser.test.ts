@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractYouTubePassiveActivities } from '../src/sync/youtubePassiveParser';
+import { extractYouTubePassiveActivities, extractYouTubePrivateTargetIds, isYouTubeItemPrivate } from '../src/sync/youtubePassiveParser';
 import { extractXPassiveActivities } from '../src/sync/xPassiveParser';
 
 describe('passiveParser', () => {
@@ -201,6 +201,56 @@ describe('passiveParser', () => {
       expect(items[1].targetId).toBe('post-studio-video-link');
       expect(items[1].title).toBe('[動画共有] 新曲のMVを公開しました！ぜひ見てね！');
       expect(items[1].timestamp).toBe(1700610000000);
+    });
+
+    it('非公開（PRIVATE）の動画・アイテムは除外され、非公開ID一覧として抽出されること', () => {
+      const mockStudioResponse = {
+        videos: [
+          {
+            videoId: 'pub-vid-1',
+            title: '公開されている動画',
+            timePublishedSeconds: 1700000000,
+            contentType: 'CREATOR_CONTENT_TYPE_VIDEO',
+            privacy: 'PUBLIC',
+          },
+          {
+            videoId: 'priv-vid-2',
+            title: '非公開のテスト動画',
+            timePublishedSeconds: 1700100000,
+            contentType: 'CREATOR_CONTENT_TYPE_VIDEO',
+            privacy: 'PRIVATE',
+          },
+          {
+            videoId: 'priv-vid-3',
+            title: 'ステータスが非公開の動画',
+            timePublishedSeconds: 1700200000,
+            contentType: 'CREATOR_CONTENT_TYPE_VIDEO',
+            status: { privacyStatus: 'PRIVATE' },
+          },
+          {
+            videoId: 'priv-vid-4',
+            title: '日本語で非公開と指定された動画',
+            timePublishedSeconds: 1700300000,
+            contentType: 'CREATOR_CONTENT_TYPE_VIDEO',
+            visibility: '非公開',
+          },
+        ],
+      };
+
+      // 1. パッシブ抽出では非公開動画が除外され、公開動画のみ返ること
+      const items = extractYouTubePassiveActivities(mockStudioResponse, 'https://studio.youtube.com/youtubei/v1/creator/list_creator_videos');
+      expect(items.length).toBe(1);
+      expect(items[0].targetId).toBe('pub-vid-1');
+
+      // 2. 非公開動画ID抽出ヘルパーで3件の非公開IDが抽出されること
+      const privateIds = extractYouTubePrivateTargetIds(mockStudioResponse);
+      expect(privateIds).toEqual(['priv-vid-2', 'priv-vid-3', 'priv-vid-4']);
+
+      // 3. ヘルパー関数の単体判定
+      expect(isYouTubeItemPrivate({ privacy: 'PRIVATE' })).toBe(true);
+      expect(isYouTubeItemPrivate({ privacyStatus: 'PRIVACY_STATUS_PRIVATE' })).toBe(true);
+      expect(isYouTubeItemPrivate({ badges: [{ label: '非公開' }] })).toBe(true);
+      expect(isYouTubeItemPrivate({ privacy: 'PUBLIC' })).toBe(false);
     });
 
     it('不正または空のレスポンスに対して安全に空配列を返すこと', () => {

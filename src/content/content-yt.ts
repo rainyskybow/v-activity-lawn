@@ -48,6 +48,17 @@ import { InterceptEventMessage, RuntimeMessage } from '../types';
         return;
       }
 
+      // 非公開動画等のアクティビティ除外受信時
+      if (msg.isRemove && msg.removeTargetIds && msg.removeTargetIds.length > 0) {
+        const runtimeMsg: RuntimeMessage = {
+          type: 'REMOVE_ACTIVITIES',
+          platform: 'youtube',
+          targetIds: msg.removeTargetIds,
+        };
+        chrome.runtime.sendMessage(runtimeMsg).catch(() => {});
+        return;
+      }
+
       // 単体アクティビティ受信時
       if (msg.actionType) {
         const runtimeMsg: RuntimeMessage = {

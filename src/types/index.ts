@@ -129,6 +129,8 @@ export interface InterceptEventMessage {
   };
   isBulk?: boolean;
   bulkItems?: BulkActivityItem[];
+  isRemove?: boolean;
+  removeTargetIds?: string[];
 }
 
 /**
@@ -147,4 +149,9 @@ export type RuntimeMessage =
   | {
       type: 'RECORD_BULK_ACTIVITIES';
       items: BulkActivityItem[];
+    }
+  | {
+      type: 'REMOVE_ACTIVITIES';
+      platform: PlatformType;
+      targetIds: string[];
     };

@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { bulkImportActivities, getTodaySummary, getActivitiesByDate } from '../src/storage/activityService';
+import { bulkImportActivities, getTodaySummary, getActivitiesByDate, removeActivitiesByTargetIds } from '../src/storage/activityService';
 import { db } from '../src/storage/db';
 import { ActivityRecord } from '../src/types';
 
@@ -99,5 +99,33 @@ describe('activityService bulkImportActivities', () => {
     expect(summaries.length).toBe(2);
     expect(summaries.find((s) => s.date === '2023-11-14')?.totalScore).toBe(15);
     expect(summaries.find((s) => s.date === '2023-11-15')?.totalScore).toBe(2);
+  });
+
+  it('removeActivitiesByTargetIdsで非公開・削除対象のアクティビティが安全に削除され日次集計が再計算されること', async () => {
+    const records: ActivityRecord[] = [
+      {
+        id: 'youtube-pub-del',
+        platform: 'youtube',
+        actionType: 'video_publish',
+        targetId: 'to-delete-1',
+        title: '非公開化される動画',
+        score: 15,
+        timestamp: 1700500000000,
+        dateString: '2023-11-20',
+      },
+    ];
+    await bulkImportActivities(records);
+    let summary = await db.daily_summaries.get('2023-11-20');
+    expect(summary?.totalScore).toBe(15);
+
+    // 削除実行
+    const removedCount = await removeActivitiesByTargetIds(['to-delete-1'], 'youtube');
+    expect(removedCount).toBe(1);
+
+    const afterAct = await db.activities.get('youtube-pub-del');
+    expect(afterAct).toBeUndefined();
+
+    summary = await db.daily_summaries.get('2023-11-20');
+    expect(summary?.totalScore).toBe(0);
   });
 });

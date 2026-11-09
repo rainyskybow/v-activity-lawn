@@ -1,4 +1,4 @@
-import { addActivity, bulkImportActivities, getTodaySummary, refreshStreaks } from '../storage/activityService';
+import { addActivity, bulkImportActivities, getTodaySummary, refreshStreaks, removeActivitiesByTargetIds } from '../storage/activityService';
 import { getSettings } from '../storage/settingsService';
 import { fetchYouTubeChannelRss } from '../sync/youtubeRss';
 import { RuntimeMessage, ActivityRecord } from '../types';
@@ -141,6 +141,33 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
       }
     })().catch((err) => {
       console.error('[v-activity-lawn] Uncaught in RECORD_BULK_ACTIVITIES:', err);
+      sendResponse({ success: false, error: String(err) });
+    });
+    return true;
+  }
+
+  // 非公開動画等の除外メッセージ処理
+  if (message.type === 'REMOVE_ACTIVITIES') {
+    (async () => {
+      try {
+        if (!message.targetIds || !Array.isArray(message.targetIds) || message.targetIds.length === 0) {
+          sendResponse({ success: true, removedCount: 0 });
+          return;
+        }
+
+        const removedCount = await removeActivitiesByTargetIds(message.targetIds, message.platform);
+        if (removedCount > 0) {
+          await updateBadge();
+          console.log(`[v-activity-lawn] Removed ${removedCount} private/deleted activities.`);
+        }
+        sendResponse({ success: true, removedCount });
+      } catch (err) {
+        const errorDetail = err instanceof Error ? (err.stack || err.message) : (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        console.error('[v-activity-lawn] Failed to remove activities:', errorDetail);
+        sendResponse({ success: false, error: errorDetail });
+      }
+    })().catch((err) => {
+      console.error('[v-activity-lawn] Uncaught in REMOVE_ACTIVITIES:', err);
       sendResponse({ success: false, error: String(err) });
     });
     return true;

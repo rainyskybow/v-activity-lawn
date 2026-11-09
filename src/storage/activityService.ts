@@ -136,6 +136,37 @@ export async function refreshStreaks(): Promise<StreakRecord> {
 }
 
 /**
+ * 指定された targetId 配列に一致するアクティビティを削除し、影響を受けた日付の日次サマリーおよびストリークを再計算する
+ * （YouTubeの非公開化対応など）
+ */
+export async function removeActivitiesByTargetIds(
+  targetIds: string[],
+  platform: PlatformType = 'youtube'
+): Promise<number> {
+  if (!targetIds || targetIds.length === 0) return 0;
+
+  return await withDbRetry(async () => {
+    // 該当するレコードを検索
+    const matching = await db.activities
+      .where('targetId')
+      .anyOf(targetIds)
+      .and((a) => a.platform === platform)
+      .toArray();
+
+    if (matching.length === 0) return 0;
+
+    const idsToDelete = matching.map((a) => a.id);
+    const affectedDates = Array.from(new Set(matching.map((a) => a.dateString)));
+
+    await db.activities.bulkDelete(idsToDelete);
+    await refreshDailySummariesBatch(affectedDates);
+    await refreshStreaks();
+
+    return idsToDelete.length;
+  });
+}
+
+/**
  * 指定した日付のアクティビティ一覧を取得する（タイムスタンプ昇順）
  */
 export async function getActivitiesByDate(dateString: string): Promise<ActivityRecord[]> {

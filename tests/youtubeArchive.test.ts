@@ -43,6 +43,18 @@ describe('youtubeArchive', () => {
       expect(records[1].dateString).toBe('2024-05-02');
     });
 
+    it('公開設定が「非公開」の動画行を除外すること', () => {
+      const sampleCsvWithPrivacy = `動画,動画 ID,公開日,公開状態,長さ,視聴回数
+"公開されている動画","pub-1","2024/05/01 19:00:00","公開","10:00",500
+"非公開のテスト動画","priv-1","2024/05/02 19:00:00","非公開","10:00",0
+"英語でprivateと書かれた動画","priv-2","2024/05/03 19:00:00","Private","05:00",0`;
+
+      const records = parseStudioTableCsv(sampleCsvWithPrivacy);
+      expect(records.length).toBe(1);
+      expect(records[0].targetId).toBe('pub-1');
+      expect(records[0].title).toBe('公開されている動画');
+    });
+
     it('英語ヘッダーのTable data CSVにも対応すること', () => {
       const enCsv = `Content,Video ID,Video publish time,Duration,Views
 "Weekly Stream","stream-xyz","May 10, 2024","2:00:00",300`;
